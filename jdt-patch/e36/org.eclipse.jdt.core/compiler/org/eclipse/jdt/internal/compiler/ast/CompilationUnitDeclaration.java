@@ -342,10 +342,27 @@ public void finalizeProblems() {
 	}
 }
 
+/*public void printType(TypeDeclaration t) {
+	System.out.println("type: " + new String(t.name));
+	System.out.println("bits " + t.bits);
+	System.out.println("modifiers" + t.modifiers);
+	if (t.memberTypes == null)
+		System.out.println("membmerTypes: null");
+	else{
+		System.out.println("member types: v");
+		for (int i = 0; i<t.memberTypes.length; i++) {
+			printType(t.memberTypes[i]);
+		}
+	}
+//	System.out.println("toString " + t);
+}*/
 /**
  * Bytecode generation
  */
 public void generateCode() {
+	/*for (int i=0; i<types.length; i++) {
+		printType(types[i]);
+	}*/
 	if (this.ignoreFurtherInvestigation) {
 		if (this.types != null) {
 			for (int i = 0, count = this.types.length; i < count; i++) {

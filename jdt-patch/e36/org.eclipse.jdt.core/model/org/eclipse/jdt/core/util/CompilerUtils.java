@@ -26,6 +26,7 @@ import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
  * will set the right options, and will also set the groovy classpath.
  * 
  * @author Andy Clement
+ * TODO Zaluum remove
  */
 public class CompilerUtils {
 
@@ -169,7 +170,9 @@ public class CompilerUtils {
 	 * @return true if the project has the groovy nature
 	 */
 	private static boolean isGroovyNaturedProject(IProject project) throws CoreException {
-		return project.hasNature("org.eclipse.jdt.groovy.core.groovyNature"); //$NON-NLS-1$
+		// ZALUUM
+		return project.hasNature("org.zaluum.nide.zaluumNature"); //$NON-NLS-1$
+		// ZALUUM
 	}
 	
 	private static String pathToString(IPath path, IProject project) {

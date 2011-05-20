@@ -110,7 +110,7 @@ public class LanguageSupportFactory {
 	//FIXASC static state issues?
 	private static LanguageSupport getLanguageSupport() {
 		if (languageSupport==null) {
-			languageSupport = /*new GroovyLanguageSupport();*/tryInstantiate("org.codehaus.jdt.groovy.integration.internal.GroovyLanguageSupport"); //$NON-NLS-1$
+			languageSupport = /*new GroovyLanguageSupport();*/tryInstantiate("org.zaluum.nide.eclipse.integration.ZaluumLanguageSupport"); //$NON-NLS-1$
 			if (languageSupport==null) {
 				languageSupport = new DefaultLanguageSupport();
 			}

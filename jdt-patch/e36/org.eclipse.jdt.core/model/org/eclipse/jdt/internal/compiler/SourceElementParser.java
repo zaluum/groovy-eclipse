@@ -44,14 +44,18 @@ import org.eclipse.jdt.internal.core.util.Messages;
  * Any (parsing) problem encountered is also provided.
  */
 public class SourceElementParser extends CommentRecorderParser {
-
 	ISourceElementRequestor requestor;
+	//ZALUUM
+	protected 
+	//
 	boolean reportReferenceInfo;
 	boolean reportLocalDeclarations;
 	HashtableOfObjectToInt sourceEnds = new HashtableOfObjectToInt();
 	HashMap nodesToCategories = new HashMap(); // a map from ASTNode to char[][]
 	boolean useSourceJavadocParser = true;
-
+	// ZALUUM
+	protected 
+	//
 	SourceElementNotifier notifier;
 
 public SourceElementParser(
