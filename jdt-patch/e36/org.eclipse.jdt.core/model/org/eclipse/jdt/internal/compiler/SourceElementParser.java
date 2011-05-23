@@ -44,6 +44,8 @@ import org.eclipse.jdt.internal.core.util.Messages;
  * Any (parsing) problem encountered is also provided.
  */
 public class SourceElementParser extends CommentRecorderParser {
+	//ZALUUM
+	public
 	ISourceElementRequestor requestor;
 	//ZALUUM
 	protected 
