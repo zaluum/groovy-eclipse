@@ -179,7 +179,10 @@ public class ASTParser {
 	 * Java project used to resolve names, or <code>null</code> if none.
      * Defaults to none.
      */
-	private IJavaProject project = null;
+	// ZALUUM private
+	protected
+	//
+	IJavaProject project = null;
 
     /**
 	 * Name of the compilation unit for resolving bindings, or
@@ -216,6 +219,9 @@ public class ASTParser {
 	 * @param level the API level; one of the LEVEL constants
 	 * declared on <code>AST</code>
 	 */
+	// ZALUUM
+	public
+	// ZALUUM
 	ASTParser(int level) {
 		if ((level != AST.JLS2_INTERNAL)
 			&& (level != AST.JLS3)) {
@@ -1049,8 +1055,13 @@ public class ASTParser {
 			initializeDefaults();
 		}
 	}
-
-	private ASTNode internalCreateAST(IProgressMonitor monitor) {
+	// ZALUUM  
+	protected org.eclipse.jdt.internal.compiler.env.ICompilationUnit createBasicCompilationUnit(org.eclipse.jdt.internal.compiler.env.ICompilationUnit sourceUnit) {
+		return new BasicCompilationUnit(sourceUnit.getContents(), sourceUnit.getPackageName(), new String(sourceUnit.getFileName()), this.project);
+	}
+	protected
+	// ZALUUM private
+	ASTNode internalCreateAST(IProgressMonitor monitor) {
 		boolean needToResolveBindings = (this.bits & CompilationUnitResolver.RESOLVE_BINDING) != 0;
 		switch(this.astKind) {
 			case K_CLASS_BODY_DECLARATIONS :
@@ -1107,7 +1118,7 @@ public class ASTParser {
 							 * (if it is a working copy, the source can change between the parse and the AST convertion)
 							 * (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=75632)
 							 */
-							sourceUnit = new BasicCompilationUnit(sourceUnit.getContents(), sourceUnit.getPackageName(), new String(sourceUnit.getFileName()), this.project);
+							sourceUnit = createBasicCompilationUnit(sourceUnit); 
 							wcOwner = ((ICompilationUnit) this.typeRoot).getOwner();
 					} else if (this.typeRoot instanceof IClassFile) {
 						try {
