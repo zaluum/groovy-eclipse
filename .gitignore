@@ -1,4 +1,8 @@
 base/org.eclipse.jdt.groovy.core/bin/
+jdt-patch/e36/org.eclipse.jdt.core/target/
+jdt-patch/e36/org.eclipse.jdt.core/ecj-temp-folder/
+
+.directory
 jdt-patch/e36/org.eclipse.jdt.core/antbin/
 jdt-patch/e36/org.eclipse.jdt.core/bin/
 bin/
