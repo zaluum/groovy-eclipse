@@ -10,9 +10,7 @@
   </parent>
   <artifactId>org.eclipse.jdt.core</artifactId>
   <packaging>eclipse-plugin</packaging>
-  <version>3.6.2.qualifier</version>
-  <dependencies>
-  </dependencies>
+  <version>3.6.2.zaluum1</version>
   
   <build>
     <plugins>
@@ -22,7 +20,6 @@
         <version>${tycho.version}</version>
         <configuration>
           <resolver>p2</resolver>
-          
         </configuration>
       </plugin>
     </plugins>
