@@ -49,6 +49,7 @@ import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.StringTokenizer;
 
+import org.codehaus.jdt.groovy.integration.LanguageSupportFactory;
 import org.eclipse.jdt.core.compiler.CategorizedProblem;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.compiler.CompilationProgress;
@@ -1861,9 +1862,9 @@ public void configure(String[] argv) {
 				if (currentArg.endsWith(SuffixConstants.SUFFIX_STRING_java)) {
 				// new code: */
 				if (currentArg.endsWith(SuffixConstants.SUFFIX_STRING_java) 
-					|| currentArg.endsWith(".groovy")) {				 //$NON-NLS-1$
+					|| LanguageSupportFactory.isInterestingSourceFile(currentArg)) {				 //$NON-NLS-1$
 				
-					if (currentArg.endsWith(".groovy")) { //$NON-NLS-1$
+					if (LanguageSupportFactory.isInterestingSourceFile(currentArg)) { //$NON-NLS-1$
 						encounteredGroovySourceFile = true;
 					}
 
@@ -2916,7 +2917,6 @@ public CompilationUnit[] getCompilationUnits() {
 	int fileCount = this.filenames.length;
 	CompilationUnit[] units = new CompilationUnit[fileCount];
 	HashtableOfObject knownFileNames = new HashtableOfObject(fileCount);
-
 	String defaultEncoding = (String) this.options.get(CompilerOptions.OPTION_Encoding);
 	if (Util.EMPTY_STRING.equals(defaultEncoding))
 		defaultEncoding = null;
@@ -2930,6 +2930,8 @@ public CompilationUnit[] getCompilationUnits() {
 		if (!file.exists())
 			throw new IllegalArgumentException(this.bind("unit.missing", this.filenames[i])); //$NON-NLS-1$
 		String encoding = this.encodings[i];
+		if (LanguageSupportFactory.isInterestingSourceFile(this.filenames[i])) 
+			encoding = "ISO-8859-1";  //$NON-NLS-1$
 		if (encoding == null)
 			encoding = defaultEncoding;
 		units[i] = new CompilationUnit(null, this.filenames[i], encoding,
