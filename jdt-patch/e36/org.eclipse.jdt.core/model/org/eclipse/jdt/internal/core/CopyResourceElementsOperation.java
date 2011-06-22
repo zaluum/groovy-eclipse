@@ -34,10 +34,6 @@ import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.core.util.Messages;
 import org.eclipse.jdt.internal.core.util.Util;
-import org.eclipse.text.edits.DeleteEdit;
-import org.eclipse.text.edits.InsertEdit;
-import org.eclipse.text.edits.MultiTextEdit;
-import org.eclipse.text.edits.ReplaceEdit;
 import org.eclipse.text.edits.TextEdit;
 
 /**
@@ -530,15 +526,20 @@ public class CopyResourceElementsOperation extends MultiOperation implements Suf
 				for (int i = 0; i < resources.length; i++) {
 					String resourceName = resources[i].getName();
 					if (Util.isJavaLikeFileName(resourceName)) {
-						// we only consider potential compilation units
 						ICompilationUnit cu = newFrag.getCompilationUnit(resourceName);
 						if (Util.isExcluded(cu.getPath(), inclusionPatterns, exclusionPatterns, false/*not a folder*/)) continue;
-						this.parser.setSource(cu);
-						CompilationUnit astCU = (CompilationUnit) this.parser.createAST(this.progressMonitor);
-						AST ast = astCU.getAST();
-						ASTRewrite rewrite = ASTRewrite.create(ast);
-						updatePackageStatement(astCU, newFragName, rewrite, cu);
-						TextEdit edits = rewrite.rewriteAST();
+						TextEdit edits;
+						if (LanguageSupportFactory.isInterestingSourceFile(resourceName)) {
+							edits = LanguageSupportFactory.updateContent(cu, newFragName, source.names, null);
+						}else{
+							// we only consider potential compilation units
+							this.parser.setSource(cu);
+							CompilationUnit astCU = (CompilationUnit) this.parser.createAST(this.progressMonitor);
+							AST ast = astCU.getAST();
+							ASTRewrite rewrite = ASTRewrite.create(ast);
+							updatePackageStatement(astCU, newFragName, rewrite, cu);
+							edits = rewrite.rewriteAST();
+						}
 						applyTextEdit(cu, edits);
 						cu.save(null, false);
 					}
@@ -630,7 +631,7 @@ public class CopyResourceElementsOperation extends MultiOperation implements Suf
 		    // GROOVY start
 			// don't use the ASTParser if not a Java compilation unit
 			if (LanguageSupportFactory.isInterestingSourceFile(cu.getElementName())) {
-				return updateNonJavaContent(cu, destPackageName, currPackageName, newName);
+				return LanguageSupportFactory.updateContent(cu, destPackageName, currPackageName, newName);
 			}
 		    // GROOVY end
 
@@ -643,11 +644,12 @@ public class CopyResourceElementsOperation extends MultiOperation implements Suf
 			return rewrite.rewriteAST();
 		}
 	}
-	
+	// ZALUUM
 	// GROOVY start
 	// create the content for non-Java files 
-	private TextEdit updateNonJavaContent(ICompilationUnit cu, String[] destPackageName, String[] currPackageName, String newName) throws JavaModelException {
+/*	private TextEdit updateNonJavaContent(ICompilationUnit cu, String[] destPackageName, String[] currPackageName, String newName) throws JavaModelException {
 		// package statement
+		return null;
 		IPackageDeclaration[] packageDecls = cu.getPackageDeclarations();
 		boolean doPackage = !Util.equalArraysOrNull(currPackageName, destPackageName);
 		boolean doName = newName != null;
@@ -698,9 +700,9 @@ public class CopyResourceElementsOperation extends MultiOperation implements Suf
 			}
 		}
 		return multiEdit;
-	}
+	}*/
 	// GROOVY end
-	
+	// ZALUUM end
 	private void updatePackageStatement(CompilationUnit astCU, String[] pkgName, ASTRewrite rewriter, ICompilationUnit cu) throws JavaModelException {
 		boolean defaultPackage = pkgName.length == 0;
 		AST ast = astCU.getAST();

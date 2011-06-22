@@ -35,6 +35,7 @@ import org.eclipse.jdt.internal.core.search.matching.MatchLocatorParser;
 import org.eclipse.jdt.internal.core.search.matching.PossibleMatch;
 import org.eclipse.jdt.internal.core.util.CommentRecorderParser;
 import org.eclipse.jdt.internal.core.util.Util;
+import org.eclipse.text.edits.TextEdit;
 
 /**
  * The default implementation just does what JDT would do.
@@ -116,5 +117,10 @@ class DefaultLanguageSupport implements LanguageSupport {
 
 	public void filterNonSourceMembers(BinaryType binaryType) {
 		// nop
+	}
+
+	public TextEdit updateContent(org.eclipse.jdt.core.ICompilationUnit cu, String[] destPackageName, String[] currPackageName,
+			String newName) {
+		return null;
 	}
 }

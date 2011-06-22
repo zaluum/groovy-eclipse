@@ -14,6 +14,7 @@ package org.codehaus.jdt.groovy.integration;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.WorkingCopyOwner;
 import org.eclipse.jdt.core.search.SearchPattern;
 import org.eclipse.jdt.core.search.SearchRequestor;
@@ -35,6 +36,7 @@ import org.eclipse.jdt.internal.core.search.matching.MatchLocator;
 import org.eclipse.jdt.internal.core.search.matching.MatchLocatorParser;
 import org.eclipse.jdt.internal.core.search.matching.PossibleMatch;
 import org.eclipse.jdt.internal.core.util.Util;
+import org.eclipse.text.edits.TextEdit;
 import org.osgi.framework.Bundle;
 
 public class LanguageSupportFactory {
@@ -94,7 +96,12 @@ public class LanguageSupportFactory {
 	public static boolean maybePerformDelegatedSearch(PossibleMatch possibleMatch, SearchPattern pattern, SearchRequestor requestor) {
 		return getLanguageSupport().maybePerformDelegatedSearch(possibleMatch, pattern, requestor);
 	}
-	
+	//ZALUUM
+	public static TextEdit updateContent(org.eclipse.jdt.core.ICompilationUnit cu, String[] destPackageName, String[] currPackageName,
+			String newName) throws JavaModelException {
+		return getLanguageSupport().updateContent(cu,destPackageName,currPackageName,newName);
+	}
+	// END ZALUUM
 	/**
 	 * Removes members from this binary type that are not mapped to locations in the 
 	 * source code (ie- their source location is invalid).  This ensures that 
