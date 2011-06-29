@@ -9,7 +9,9 @@ import java.util.List;
 
 import org.codehaus.groovy.eclipse.core.builder.GroovyClasspathContainer;
 import org.codehaus.groovy.eclipse.core.compiler.CompilerUtils;
+import org.codehaus.groovy.eclipse.dsl.DSLPreferencesInitializer;
 import org.codehaus.groovy.eclipse.dsl.GroovyDSLCoreActivator;
+import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
@@ -27,11 +29,13 @@ import org.eclipse.jdt.core.JavaCore;
  */
 public class DSLDContainerInitializer extends ClasspathContainerInitializer {
 
+    private static final IClasspathEntry[] NO_ENTRIES = new IClasspathEntry[0];
+
     private final class DSLDClasspathContainer implements IClasspathContainer {
         private IClasspathEntry[] entries;
 
         public IPath getPath() {
-            return CONTAINER_ID;
+            return GroovyDSLCoreActivator.CLASSPATH_CONTAINER_ID;
         }
 
         public int getKind() {
@@ -58,6 +62,11 @@ public class DSLDContainerInitializer extends ClasspathContainerInitializer {
          * @return
          */
         protected IClasspathEntry[] calculateEntries() {
+            if (GroovyDSLCoreActivator.getDefault().getPreferenceStore()
+            		.getBoolean(DSLPreferencesInitializer.DSLD_DISABLED)) {
+        		return NO_ENTRIES;
+        	}
+        	
             String dotGroovyLocation = CompilerUtils.getDotGroovyLocation();
             List<IClasspathEntry> newEntries = new ArrayList<IClasspathEntry>();
             if (dotGroovyLocation != null) {
@@ -80,17 +89,15 @@ public class DSLDContainerInitializer extends ClasspathContainerInitializer {
             URL folder = CompilerUtils.findDSLDFolder();
             if (folder != null) {
                 String file = folder.getFile();
-                if (new File(file).exists()) {
-                    IPath path = new Path(folder.getPath());
-                    newEntries.add(newLibraryEntry(path, null, null));
-                }
+                Assert.isTrue(new File(file).exists(), "Plugin DSLD location does not exist: " + file);
+                
+                IPath path = new Path(folder.getPath());
+                newEntries.add(newLibraryEntry(path, null, null));
             }
-            return newEntries.toArray(new IClasspathEntry[0]);
+            return newEntries.toArray(NO_ENTRIES);
         }
     }
 
-    public static IPath CONTAINER_ID = new Path("GROOVY_DSL_SUPPORT");
-    
     private IJavaProject javaProject;
     
     @Override

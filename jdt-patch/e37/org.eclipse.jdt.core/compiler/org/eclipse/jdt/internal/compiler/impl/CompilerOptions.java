@@ -391,6 +391,7 @@ public class CompilerOptions {
 		"finally", //$NON-NLS-1$
 		"hiding", //$NON-NLS-1$
 		"incomplete-switch", //$NON-NLS-1$
+		"javadoc", //$NON-NLS-1$
 		"nls", //$NON-NLS-1$
 		"null", //$NON-NLS-1$
 		"restriction", //$NON-NLS-1$
@@ -797,6 +798,10 @@ public class CompilerOptions {
 			case MethodCanBeStatic :
 			case MethodCanBePotentiallyStatic :
 				return "static-method"; //$NON-NLS-1$
+			case InvalidJavadoc :
+			case MissingJavadocComments :
+			case MissingJavadocTags:
+				return "javadoc"; //$NON-NLS-1$				
 		}
 		return null;
 	}
@@ -836,6 +841,10 @@ public class CompilerOptions {
 			case 'i' :
 				if ("incomplete-switch".equals(warningToken)) //$NON-NLS-1$
 					return IrritantSet.INCOMPLETE_SWITCH;
+				break;
+			case 'j' :
+				if ("javadoc".equals(warningToken)) //$NON-NLS-1$
+					return IrritantSet.JAVADOC;
 				break;
 			case 'n' :
 				if ("nls".equals(warningToken)) //$NON-NLS-1$
@@ -1520,7 +1529,6 @@ public class CompilerOptions {
 			if (ENABLED.equals(optionValue)) {
 				this.processAnnotations = true;
 				this.storeAnnotations = true; // annotation processing requires annotation to be stored
-				this.docCommentSupport = true;  // annotation processing requires javadoc processing
 			} else if (DISABLED.equals(optionValue)) {
 				this.processAnnotations = false;
 				this.storeAnnotations = false;
@@ -1533,7 +1541,7 @@ public class CompilerOptions {
 				this.storeAnnotations = true; // force it on
 				// will need proper bit manipulation when second flag comes up
 				String s = (String)optionsMap.get(OPTIONG_GroovyFlags);
-				if (s!=null && s.equals("1")) {
+				if (s!=null && s.equals("1")) { //$NON-NLS-1$
 					this.groovyFlags = 0x01;
 				} else {
 					this.groovyFlags = 0;
@@ -1544,10 +1552,10 @@ public class CompilerOptions {
 			}
 		}
 		if ((optionValue = optionsMap.get(OPTIONG_GroovyClassLoaderPath)) != null) {
-			groovyClassLoaderPath = (String)optionValue;
+			this.groovyClassLoaderPath = (String)optionValue;
 		}
 		if ((optionValue = optionsMap.get(OPTIONG_GroovyProjectName)) != null) {
-			groovyProjectName = (String)optionValue;
+			this.groovyProjectName = (String)optionValue;
 		}
 		// GROOVY end
 	}
@@ -1653,10 +1661,10 @@ public class CompilerOptions {
 		buf.append("\n\t- method can be static: ").append(getSeverityString(MethodCanBeStatic)); //$NON-NLS-1$
 		buf.append("\n\t- method can be potentially static: ").append(getSeverityString(MethodCanBePotentiallyStatic)); //$NON-NLS-1$
 		// GROOVY start
-		buf.append("\n\t- build groovy files: ").append((buildGroovyFiles==0)?"dontknow":(buildGroovyFiles==1?"no":"yes")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-		buf.append("\n\t- build groovy flags: ").append(Integer.toHexString(groovyFlags)); //$NON-NLS-1$
-		buf.append("\n\t- groovyclassloader path: ").append(groovyClassLoaderPath); //$NON-NLS-1$
-		buf.append("\n\t- groovy projectname: ").append(groovyProjectName); //$NON-NLS-1$
+		buf.append("\n\t- build groovy files: ").append((this.buildGroovyFiles==0)?"dontknow":(this.buildGroovyFiles==1?"no":"yes")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		buf.append("\n\t- build groovy flags: ").append(Integer.toHexString(this.groovyFlags)); //$NON-NLS-1$
+		buf.append("\n\t- groovyclassloader path: ").append(this.groovyClassLoaderPath); //$NON-NLS-1$
+		buf.append("\n\t- groovy projectname: ").append(this.groovyProjectName); //$NON-NLS-1$
 		// GROOVY end
 		return buf.toString();
 	}

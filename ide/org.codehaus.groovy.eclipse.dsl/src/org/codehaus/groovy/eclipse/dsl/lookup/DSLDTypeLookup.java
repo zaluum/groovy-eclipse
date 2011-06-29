@@ -25,6 +25,7 @@ import org.codehaus.jdt.groovy.model.GroovyCompilationUnit;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.groovy.search.AbstractSimplifiedTypeLookup;
 import org.eclipse.jdt.groovy.search.ITypeLookup;
+import org.eclipse.jdt.groovy.search.TypeLookupResult.TypeConfidence;
 import org.eclipse.jdt.groovy.search.VariableScope;
 
 /**
@@ -51,6 +52,7 @@ public class DSLDTypeLookup extends AbstractSimplifiedTypeLookup implements ITyp
         store = store.createSubStore(pattern);
     }
 
+    // FIXADE Should shortcut if we find a solution earlier.
     @Override
     protected TypeAndDeclaration lookupTypeAndDeclaration(ClassNode declaringType, String name, VariableScope scope) {
         pattern.setCurrentScope(scope);
@@ -59,14 +61,16 @@ public class DSLDTypeLookup extends AbstractSimplifiedTypeLookup implements ITyp
         for (IContributionElement elt : elts) {
             TypeAndDeclaration td = elt.lookupType(name, declaringType, pattern.resolver);
             if (td != null) {
-                if (GroovyLogManager.manager.hasLoggers()) {
-                    GroovyLogManager.manager.log(TraceCategory.DSL, 
-                            "Match found for " + name + " in " + elt.contributionName());
-                }
                 return td;
             }
         }
         return null;
+    }
+    
+    
+    @Override
+    protected TypeConfidence confidence() {
+        return TypeConfidence.INFERRED;
     }
 
 }

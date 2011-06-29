@@ -49,7 +49,7 @@ public class DSLDScriptExecutor {
         private static final long serialVersionUID = 282885748470678955L;
 
         public UnsupportedDSLVersion(String why) {
-            super(scriptName + " is not supported because:\n" + why);
+            super(scriptFile.getName() + " is not supported because:\n" + why);
         }
         
     }
@@ -142,7 +142,7 @@ public class DSLDScriptExecutor {
     private final GroovyClassLoader gcl;
     private final IJavaProject project;
     private PointcutFactory factory;
-    private String scriptName;
+    private IStorage scriptFile;
     
     public DSLDScriptExecutor(IJavaProject project) {
         // FIXADE Should have one classloader per project
@@ -151,7 +151,7 @@ public class DSLDScriptExecutor {
     }
 
     public Object executeScript(IStorage scriptFile) {
-        scriptName = scriptFile.getFullPath().toPortableString();
+        this.scriptFile = scriptFile;
         String event = null;
         try {
             if (GroovyLogManager.manager.hasLoggers()) {
@@ -159,18 +159,18 @@ public class DSLDScriptExecutor {
                 event = "Script creation for " + scriptFile;
                 GroovyLogManager.manager.logStart(event);
             }
-            factory = new PointcutFactory(scriptName, project.getProject());
+            factory = new PointcutFactory(scriptFile, project.getProject());
             Object result = null;
             try {
                 String scriptContents = getContents(scriptFile);
                 Class<Script> clazz = null;
                 try {
-                    clazz = gcl.parseClass(scriptContents, scriptName);
+                    clazz = gcl.parseClass(scriptContents, scriptFile.getName());
                 } catch (Exception e) {
                     if (GroovyLogManager.manager.hasLoggers()) {
                         StringWriter writer = new StringWriter();
                         e.printStackTrace(new PrintWriter(writer));
-                        GroovyLogManager.manager.log(TraceCategory.DSL, "Attempted to compile " + scriptName + "but failed because:\n" +
+                        GroovyLogManager.manager.log(TraceCategory.DSL, "Attempted to compile " + scriptFile + "but failed because:\n" +
                                 writer.getBuffer());
                     }
                     return result;
@@ -181,7 +181,7 @@ public class DSLDScriptExecutor {
                     // might be some strange compile error
                     // or a class is accidentally defined
                     if (GroovyLogManager.manager.hasLoggers()) {
-                        GroovyLogManager.manager.log(TraceCategory.DSL, "Class " + scriptName + " is not a script.  Can't execute as DSLD.");
+                        GroovyLogManager.manager.log(TraceCategory.DSL, "Class " + scriptFile + " is not a script.  Can't execute as DSLD.");
                     }
                     return result;
                 }
