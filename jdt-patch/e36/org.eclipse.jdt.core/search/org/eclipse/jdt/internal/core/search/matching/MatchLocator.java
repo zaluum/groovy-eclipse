@@ -1735,7 +1735,11 @@ protected void process(PossibleMatch possibleMatch, boolean bindingsWereCreated)
 		} catch (Throwable t) {
 			t.printStackTrace();
 		}
+		try{
 		possibleMatch.parsedUnit.resolve();
+		}catch(Throwable t) {
+			System.err.println("BUG MatchLocator.java usually buildTypeBindings detects a duplicate type" + t.toString());
+		}
 		return;
 	}
 	// GROOVY End
