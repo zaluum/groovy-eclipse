@@ -32,7 +32,7 @@ public class ParameterContribution {
     public ParameterContribution(Parameter cachedParameter) {
         this.cachedParameter = cachedParameter;
         this.name = cachedParameter.getName();
-        this.type = cachedParameter.getType().getName();
+        this.type = DSLContributionGroup.getTypeName(cachedParameter.getType());
     }
     
     public ParameterContribution(String name) {
@@ -50,4 +50,11 @@ public class ParameterContribution {
         }
         return cachedParameter;
     }
+
+    @Override
+    public String toString() {
+        return type + " " + name;
+    }
+    
+    
 }

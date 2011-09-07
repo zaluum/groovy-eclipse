@@ -13,11 +13,13 @@ package org.codehaus.groovy.eclipse.dsl.pointcuts.impl;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.eclipse.dsl.pointcuts.GroovyDSLDContext;
+import org.eclipse.core.resources.IStorage;
 
 /**
  * Converts the object toMatch into a type and then sees if it is a subtype.
@@ -31,7 +33,7 @@ public class SubTypePointcut extends FilteringPointcut<ClassNode> {
     
     private Map<ClassNode, Set<ClassNode>> cachedHierarchies = new HashMap<ClassNode, Set<ClassNode>>();
 
-    public SubTypePointcut(String containerIdentifier, String pointcutName) {
+    public SubTypePointcut(IStorage containerIdentifier, String pointcutName) {
         super(containerIdentifier, pointcutName, ClassNode.class);
     }
 
@@ -44,7 +46,7 @@ public class SubTypePointcut extends FilteringPointcut<ClassNode> {
     @Override
     protected Collection<ClassNode> explodeObject(Object toMatch) {
         if (toMatch instanceof Collection<?>) {
-            Set<ClassNode> classes = new HashSet<ClassNode>();
+            Set<ClassNode> classes = new LinkedHashSet<ClassNode>();
             for (Object elt : (Collection<?>) toMatch) {
                 if (elt instanceof ClassNode) {
                     classes.addAll(getAllSupers((ClassNode) elt));

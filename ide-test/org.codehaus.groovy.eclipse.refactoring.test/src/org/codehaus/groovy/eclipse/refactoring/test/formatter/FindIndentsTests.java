@@ -22,10 +22,10 @@ import junit.framework.TestCase;
 
 import org.codehaus.groovy.eclipse.refactoring.formatter.DefaultGroovyFormatter;
 import org.codehaus.groovy.eclipse.refactoring.formatter.FormatterPreferencesOnStore;
+import org.codehaus.groovy.eclipse.refactoring.test.TestPrefInitializer;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.text.Document;
 
-import core.TestPrefInitializer;
 
 /**
  * @author Andrew Eisenberg
@@ -70,8 +70,8 @@ public class FindIndentsTests extends TestCase {
     }
 
     public void testIndent6() throws Exception {
-        String line = " \t \t \t f";
-        assertEquals("Incorrect indentation found for line \"" + line + "\"", 3, formatter.computeIndentLevel(line));
+        String line = "   \t \t \tf";
+        assertEquals("Incorrect indentation found for line \"" + line + "\"", 4, formatter.computeIndentLevel(line));
     }
     public void testIndent7() throws Exception {
         String line = "f";

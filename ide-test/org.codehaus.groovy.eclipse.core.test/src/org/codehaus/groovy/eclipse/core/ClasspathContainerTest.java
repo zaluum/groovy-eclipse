@@ -1,5 +1,5 @@
- /*
- * Copyright 2003-2009 the original author or authors.
+/*
+ * Copyright 2009-2011 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,32 +15,70 @@
  */
 package org.codehaus.groovy.eclipse.core;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.codehaus.groovy.eclipse.core.builder.GroovyClasspathContainer;
+import org.codehaus.groovy.eclipse.core.preferences.PreferenceConstants;
 import org.codehaus.groovy.eclipse.test.EclipseTestCase;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.jdt.core.IClasspathContainer;
 import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.internal.core.JavaModelManager;
 
+/**
+ * @author Rene Scheibe
+ * @created Jul 11, 2011
+ */
 public class ClasspathContainerTest extends EclipseTestCase {
-    public void testClassPathContainerContents() throws Exception {
-        GroovyClasspathContainer container = (GroovyClasspathContainer)
-            JavaModelManager.getJavaModelManager().getClasspathContainer(new Path("GROOVY_SUPPORT"), testProject.getJavaProject());
+
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+        GroovyCoreActivator.getDefault().setPreference(PreferenceConstants.GROOVY_CLASSPATH_USE_GROOVY_LIB_GLOBAL, false);
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        super.tearDown();
+        GroovyCoreActivator.getDefault().setPreference(PreferenceConstants.GROOVY_CLASSPATH_USE_GROOVY_LIB_GLOBAL, true);
+    }
+
+    public void testClassPathContainerContents() throws JavaModelException {
+
+        JavaModelManager javaModelManager = JavaModelManager.getJavaModelManager();
+        IPath containerPath = new Path("GROOVY_SUPPORT");
+        IClasspathContainer container = javaModelManager.getClasspathContainer(containerPath, testProject.getJavaProject());
+
         IClasspathEntry[] entries = container.getClasspathEntries();
 
-        boolean groovyAllFound = false;
+        List<IClasspathEntry> groovyAllEntries = getGroovyAllEntries(entries);
+        List<IClasspathEntry> nonPluginEntries = getNonPluginEntries(entries);
+
+        assertEquals("classpath container class", GroovyClasspathContainer.class, container.getClass());
+        assertEquals("Mutiple groovy-all found in the Groovy classpath container: " + groovyAllEntries, 1, groovyAllEntries.size());
+        assertEquals("Unexpected entries found in the Groovy classpath container: " + nonPluginEntries, 0, nonPluginEntries.size());
+    }
+
+    private List<IClasspathEntry> getGroovyAllEntries(IClasspathEntry[] entries) {
+        List<IClasspathEntry> groovyAllEntries = new ArrayList<IClasspathEntry>();
         for (IClasspathEntry entry : entries) {
-            String pathStr = entry.getPath().toPortableString();
-            if (pathStr.indexOf("groovy-all") != -1) {
-                if (groovyAllFound) {
-                    fail("Groovy-all found twice in Groovy Classpath container: " + entry);
-                }
-                groovyAllFound = true;
-            } else if (pathStr.indexOf("/org.codehaus.groovy") == -1) {
-                // fail if there is a path that is not inside of the groovy
-                // plugin
-                fail("Unexpected entry in Groovy Classpath container: " + entry);
+            if (entry.getPath().toPortableString().contains("groovy-all")) {
+                groovyAllEntries.add(entry);
             }
         }
+        return groovyAllEntries;
+    }
 
+    private List<IClasspathEntry> getNonPluginEntries(IClasspathEntry[] entries) {
+        List<IClasspathEntry> nonPluginEntries = new ArrayList<IClasspathEntry>();
+        for (IClasspathEntry entry : entries) {
+            if (!entry.getPath().toPortableString().contains("/org.codehaus.groovy")) {
+                nonPluginEntries.add(entry);
+            }
+        }
+        return nonPluginEntries;
     }
 }

@@ -32,7 +32,6 @@ public class AllCompletionTests {
         suite.addTestSuite(TypeCompletionTests2.class);
         suite.addTestSuite(GroovyLikeCompletionTests.class);
         suite.addTestSuite(InnerTypeCompletionTests.class);
-        suite.addTestSuite(StandardASTTransformCompletionTests.class);
         suite.addTestSuite(OtherCompletionTests.class);
         suite.addTestSuite(FindImportsRegionTests.class);
         suite.addTestSuite(RelevanceTests.class);
@@ -42,6 +41,8 @@ public class AllCompletionTests {
         suite.addTestSuite(StaticImportsCompletionTests.class);
         suite.addTestSuite(GenericCompletionTests.class);
         suite.addTestSuite(ExtendedCompletionContextTests.class);
+        suite.addTestSuite(ContentAssistLocationTests.class);
+        suite.addTestSuite(ContextInformationTests.class);
         
         return suite;
     }

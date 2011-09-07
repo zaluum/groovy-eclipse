@@ -1,25 +1,22 @@
-/*
- * Copyright 2003-2009 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
+/*******************************************************************************
+ * Copyright (c) 2009-2011 SpringSource and others.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     SpringSource - initial API and implementation
+ *******************************************************************************/
 package org.eclipse.jdt.groovy.search;
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
@@ -27,6 +24,7 @@ import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.AnnotatedNode;
 import org.codehaus.groovy.ast.AnnotationNode;
 import org.codehaus.groovy.ast.ClassCodeVisitorSupport;
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.ConstructorNode;
 import org.codehaus.groovy.ast.FieldNode;
@@ -82,6 +80,7 @@ import org.codehaus.groovy.ast.stmt.ReturnStatement;
 import org.codehaus.groovy.ast.stmt.Statement;
 import org.codehaus.groovy.classgen.BytecodeExpression;
 import org.codehaus.groovy.control.SourceUnit;
+import org.codehaus.groovy.syntax.Types;
 import org.codehaus.jdt.groovy.model.GroovyCompilationUnit;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
@@ -664,13 +663,14 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		super.visitAnnotations(node);
 	}
 
-	// @Override
+	@Override
 	public void visitImports(ModuleNode node) {
 		for (ImportNode imp : new ImportNodeCompatibilityWrapper(node).getAllImportNodes()) {
 			TypeLookupResult result = null;
 			IJavaElement oldEnclosingElement = enclosingElement;
 			// FIXADE this will not work for static or * imports
 			ClassNode type = imp.getType();
+
 			if (type != null) {
 				enclosingElement = unit.getImport(imp.getClassName().replace('$', '.'));
 				if (!enclosingElement.exists()) {
@@ -678,39 +678,42 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 				}
 			}
 
-			VariableScope scope = scopes.peek();
-			for (ITypeLookup lookup : lookups) {
-				TypeLookupResult candidate = lookup.lookupType(imp, scope);
-				if (candidate != null) {
-					if (result == null || result.confidence.isLessPreciseThan(candidate.confidence)) {
-						result = candidate;
-					}
-					if (TypeConfidence.LOOSELY_INFERRED.isLessPreciseThan(result.confidence)) {
-						break;
+			try {
+				VariableScope scope = scopes.peek();
+				for (ITypeLookup lookup : lookups) {
+					TypeLookupResult candidate = lookup.lookupType(imp, scope);
+					if (candidate != null) {
+						if (result == null || result.confidence.isLessPreciseThan(candidate.confidence)) {
+							result = candidate;
+						}
+						if (TypeConfidence.LOOSELY_INFERRED.isLessPreciseThan(result.confidence)) {
+							break;
+						}
 					}
 				}
-			}
-			VisitStatus status = handleRequestor(imp, requestor, result);
+				VisitStatus status = handleRequestor(imp, requestor, result);
 
-			enclosingElement = oldEnclosingElement;
-			switch (status) {
-				case CONTINUE:
-					try {
-						if (type != null) {
-							visitClassReference(type);
+				switch (status) {
+					case CONTINUE:
+						try {
+							if (type != null) {
+								visitClassReference(type);
+							}
+						} catch (VisitCompleted e) {
+							if (e.status == VisitStatus.STOP_VISIT) {
+								throw e;
+							}
 						}
-					} catch (VisitCompleted e) {
-						if (e.status == VisitStatus.STOP_VISIT) {
-							throw e;
-						}
-					}
-					continue;
-				case CANCEL_BRANCH:
-				case CANCEL_MEMBER:
-					// assume that import statements are not interesting
-					return;
-				case STOP_VISIT:
-					throw new VisitCompleted(status);
+						continue;
+					case CANCEL_BRANCH:
+					case CANCEL_MEMBER:
+						// assume that import statements are not interesting
+						return;
+					case STOP_VISIT:
+						throw new VisitCompleted(status);
+				}
+			} finally {
+				enclosingElement = oldEnclosingElement;
 			}
 		}
 	}
@@ -740,22 +743,24 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 	private boolean handleExpression(Expression node) {
 		TypeLookupResult result = null;
 		ClassNode objectExprType;
+		boolean isStatic;
 		VariableScope scope = scopes.peek();
 		if (isProperty(node)) {
 			objectExprType = objectExpressionType.pop();
+			isStatic = hasStaticObjectExpression(node);
+			scope.methodCallNumberOfArguments = getMethodCallArgs();
 		} else {
-			// if inside a closure and that closure is an argument to a method call,
-			// then use the declaring type of the method call.
-			// eg-
-			// foo.run { someMethod() }
-			// the declaring type of someMethod() should be the type of foo.
-			// CallAndType cat = scope.getEnclosingMethodCallExpression();
-			// objectExprType = cat != null && scope.getEnclosingClosure() != null ? cat.declaringType : null;
 			objectExprType = null;
+			isStatic = false;
 		}
 
 		for (ITypeLookup lookup : lookups) {
-			TypeLookupResult candidate = lookup.lookupType(node, scope, objectExprType);
+			TypeLookupResult candidate;
+			if (lookup instanceof ITypeLookupExtension) {
+				candidate = ((ITypeLookupExtension) lookup).lookupType(node, scope, objectExprType, isStatic);
+			} else {
+				candidate = lookup.lookupType(node, scope, objectExprType);
+			}
 			if (candidate != null) {
 				if (result == null || result.confidence.isLessPreciseThan(candidate.confidence)) {
 					result = candidate;
@@ -768,11 +773,16 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		result.enclosingAssignment = enclosingAssignment;
 		VisitStatus status = handleRequestor(node, requestor, result);
 
+		scope.methodCallNumberOfArguments = -1; // forget the number of arguments
+
 		// when there is a category method, we don't want to store it
 		// as the declaring type since this will mess things up inside closures
 		ClassNode rememberedDeclaringType = result.declaringType;
 		if (scope.getCategoryNames().contains(rememberedDeclaringType)) {
 			rememberedDeclaringType = objectExprType;
+		}
+		if (rememberedDeclaringType == null) {
+			rememberedDeclaringType = VariableScope.OBJECT_CLASS_NODE;
 		}
 		switch (status) {
 			case CONTINUE:
@@ -797,6 +807,28 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		}
 		// won't get here
 		return false;
+	}
+
+	/**
+	 * Finds the number of arguments of the current method call. Returns -1 if not a method call. Returns 0 if no arguments else
+	 * returns the number of arguments.
+	 * 
+	 * @return
+	 */
+	private int getMethodCallArgs() {
+		ASTNode peek = propertyExpression.peek();
+		if (peek instanceof MethodCallExpression) {
+			MethodCallExpression call = (MethodCallExpression) peek;
+			Expression arguments = call.getArguments();
+			if (arguments instanceof ArgumentListExpression) {
+				ArgumentListExpression list = (ArgumentListExpression) arguments;
+				List<Expression> expressions = list.getExpressions();
+				return expressions != null ? expressions.size() : 0;
+			} else {
+				return 0;
+			}
+		}
+		return -1;
 	}
 
 	private boolean handleParameterList(Parameter[] params) {
@@ -910,7 +942,7 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		}
 
 		// keep track of the enclosing assignment statement when visiting the RHS.
-		boolean isAssignment = node.getOperation().getText().equals("=");
+		boolean isAssignment = node.getOperation().getType() == Types.EQUALS;
 		BinaryExpression oldEnclosingAssignment = enclosingAssignment;
 		if (isAssignment) {
 			enclosingAssignment = node;
@@ -948,6 +980,11 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 
 			// returns true if this binary expression is the property part of another property expression
 			if (isObjectExpression(node)) {
+				// over here, we should try to find the binary expr's inferred type.
+				// 1. convert operator into a method name
+				// 2. convert that into a constant expression
+				// 3. call handle expression on it
+				// 4. then make sure that the result is pushed onto objectExpressionType
 				objectExpressionType.push(findTypeOfBinaryExpression(node.getOperation().getText(), objExprType, propType));
 			}
 		} else {
@@ -1013,21 +1050,23 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		scopes.push(scope);
 		boolean shouldContinue = handleExpression(node);
 		if (shouldContinue) {
-			ClassNode implicitParamType = findImplicitParamType(scope);
+			ClassNode[] implicitParamType = findImplicitParamType(scope, node);
 			if (node.getParameters() != null && node.getParameters().length > 0) {
 				handleParameterList(node.getParameters());
 
-				// maybe set the implicit param type of the first param
-				Parameter firstParameter = node.getParameters()[0];
-				if (implicitParamType != VariableScope.OBJECT_CLASS_NODE
-						&& firstParameter.getType().equals(VariableScope.OBJECT_CLASS_NODE)) {
-					firstParameter.setType(implicitParamType);
-					scope.addVariable(firstParameter);
+				// only set the implicit param type of the parametrers if it is not explicitly defined
+				for (int i = 0; i < node.getParameters().length; i++) {
+					Parameter parameter = node.getParameters()[i];
+					if (implicitParamType[i] != VariableScope.OBJECT_CLASS_NODE
+							&& parameter.getType().equals(VariableScope.OBJECT_CLASS_NODE)) {
+						parameter.setType(implicitParamType[i]);
+						scope.addVariable(parameter);
+					}
 				}
 			} else
 			// it variable only exists if there are no explicit parameters
-			if (implicitParamType != VariableScope.OBJECT_CLASS_NODE && !scope.containsInThisScope("it")) {
-				scope.addVariable("it", implicitParamType, VariableScope.OBJECT_CLASS_NODE);
+			if (implicitParamType[0] != VariableScope.OBJECT_CLASS_NODE && !scope.containsInThisScope("it")) {
+				scope.addVariable("it", implicitParamType[0], VariableScope.OBJECT_CLASS_NODE);
 			}
 			CallAndType cat = scope.getEnclosingMethodCallExpression();
 			if (cat != null) {
@@ -1044,16 +1083,52 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 	 * kind of type they expect.
 	 * 
 	 * @param scope
-	 * @return
+	 * @return am array of {@link ClassNode}s specifying the inferred type of each of the closure's parameters
 	 */
-	private ClassNode findImplicitParamType(VariableScope scope) {
+	private ClassNode[] findImplicitParamType(VariableScope scope, ClosureExpression closure) {
+		int numParams = closure.getParameters() == null ? 0 : closure.getParameters().length;
+		if (numParams == 0) {
+			// implicit parameter
+			numParams++;
+		}
+		ClassNode[] allInferred = new ClassNode[numParams];
+
 		CallAndType call = scope.getEnclosingMethodCallExpression();
 		if (call != null) {
-			if (dgmClosureMethods.contains(call.call.getMethodAsString())) {
-				return extractElementType(call.declaringType);
+			String methodName = call.call.getMethodAsString();
+			ClassNode inferredType;
+
+			if (dgmClosureMethods.contains(methodName)) {
+				inferredType = VariableScope.extractElementType(call.declaringType);
+			} else {
+				// inferredType might be null
+				inferredType = dgmClosureMethodsMap.get(methodName);
+			}
+
+			if (inferredType != null) {
+				Arrays.fill(allInferred, inferredType);
+				// special cases: eachWithIndex has last element an integer
+				if (methodName.equals("eachWithIndex") && allInferred.length > 1) {
+					allInferred[allInferred.length - 1] = VariableScope.INTEGER_CLASS_NODE;
+				}
+				// if declaring type is a map and
+				if (call.declaringType.getName().equals(VariableScope.MAP_CLASS_NODE.getName())) {
+					if (((methodName.equals("each") || methodName.equals("collect")) && numParams == 2 || methodName
+							.equals("collectEntries") && numParams == 2)
+							|| (methodName.equals("eachWithIndex") && numParams == 3)) {
+						GenericsType[] typeParams = inferredType.getGenericsTypes();
+						if (typeParams != null && typeParams.length == 2) {
+							allInferred[0] = typeParams[0].getType();
+							allInferred[1] = typeParams[1].getType();
+						}
+					}
+
+				}
+				return allInferred;
 			}
 		}
-		return VariableScope.OBJECT_CLASS_NODE;
+		Arrays.fill(allInferred, VariableScope.OBJECT_CLASS_NODE);
+		return allInferred;
 	}
 
 	/**
@@ -1068,8 +1143,48 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		dgmClosureMethods.add("unique");
 		dgmClosureMethods.add("every");
 		dgmClosureMethods.add("collect");
+		dgmClosureMethods.add("collectEntries");
 		dgmClosureMethods.add("findAll");
 		dgmClosureMethods.add("groupBy");
+
+		dgmClosureMethods.add("inject");
+		dgmClosureMethods.add("count");
+		dgmClosureMethods.add("countBy");
+		dgmClosureMethods.add("findResult");
+		dgmClosureMethods.add("grep");
+		dgmClosureMethods.add("split");
+		dgmClosureMethods.add("sum");
+		dgmClosureMethods.add("any");
+		dgmClosureMethods.add("flatten");
+		dgmClosureMethods.add("findIndexOf");
+		dgmClosureMethods.add("findIndexValues");
+		dgmClosureMethods.add("findLastIndexOf");
+		dgmClosureMethods.add("collectAll");
+		dgmClosureMethods.add("min");
+		dgmClosureMethods.add("max");
+		dgmClosureMethods.add("eachPermutation");
+		dgmClosureMethods.add("sort");
+
+		// these don't take collections, but can be handled inthe same way
+		dgmClosureMethods.add("identity");
+		dgmClosureMethods.add("times");
+		dgmClosureMethods.add("upto");
+		dgmClosureMethods.add("downto");
+		dgmClosureMethods.add("step");
+		dgmClosureMethods.add("eachFile");
+		dgmClosureMethods.add("eachDir");
+		dgmClosureMethods.add("eachFileRecurse");
+		dgmClosureMethods.add("eachDirRecurse");
+		dgmClosureMethods.add("traverse");
+	}
+
+	// These methods have a fixed type for the closure argument
+	private static final Map<String, ClassNode> dgmClosureMethodsMap = new HashMap<String, ClassNode>();
+	static {
+		dgmClosureMethodsMap.put("eachLine", VariableScope.STRING_CLASS_NODE);
+		dgmClosureMethodsMap.put("splitEachLine", VariableScope.STRING_CLASS_NODE);
+		dgmClosureMethodsMap.put("withObjectOutputStream", VariableScope.OBJECT_OUTPUT_STREAM);
+		dgmClosureMethodsMap.put("withObjectInputStream", VariableScope.OBJECT_INPUT_STREAM);
 	}
 
 	@Override
@@ -1114,7 +1229,7 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 
 			// now update the type of the parameter with the collection type
 			if (param.getType().equals(VariableScope.OBJECT_CLASS_NODE)) {
-				ClassNode extractedElementType = extractElementType(collectionType);
+				ClassNode extractedElementType = VariableScope.extractElementType(collectionType);
 				scopes.peek().addVariable(param.getName(), extractedElementType, null);
 			}
 		}
@@ -1122,67 +1237,6 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		node.getLoopBlock().visit(this);
 
 		scopes.pop();
-	}
-
-	/**
-	 * Extracts an element type from a collection
-	 * 
-	 * @param collectionType a collection object, or an object that is iterable
-	 * @return
-	 */
-	private ClassNode extractElementType(ClassNode collectionType) {
-
-		// if array, then use the component type
-		if (collectionType.isArray()) {
-			return collectionType.getComponentType();
-		}
-
-		// check to see if this type has an iterator method
-		// if so, then resolve the type parameters
-		MethodNode iterator = collectionType.getMethod("iterator", new Parameter[0]);
-		ClassNode typeToResolve = null;
-		if (iterator != null) {
-			typeToResolve = iterator.getReturnType();
-		}
-
-		// if the type is an iterator or an enumeration, then resolve the type parameter
-		if (collectionType.declaresInterface(VariableScope.ITERATOR_CLASS) || collectionType.equals(VariableScope.ITERATOR_CLASS)
-				|| collectionType.declaresInterface(VariableScope.ENUMERATION_CLASS)
-				|| collectionType.equals(VariableScope.ENUMERATION_CLASS)) {
-			typeToResolve = collectionType;
-		} else if (collectionType.declaresInterface(VariableScope.MAP_CLASS_NODE)
-				|| collectionType.equals(VariableScope.MAP_CLASS_NODE)) {
-			MethodNode entrySetMethod = collectionType.getMethod("entrySet", new Parameter[0]);
-			if (entrySetMethod != null) {
-				typeToResolve = entrySetMethod.getReturnType();
-			}
-		}
-
-		if (typeToResolve != null) {
-			// if (typeToResolve instanceof JDTClassNode) {
-			// JDTClassNodes are immutable, must change that
-			typeToResolve = VariableScope.clone(typeToResolve);
-			// }
-			ClassNode unresolvedCollectionType = collectionType.redirect();
-			GenericsMapper mapper = GenericsMapper.gatherGenerics(collectionType, unresolvedCollectionType);
-			ClassNode resolved = VariableScope.resolveTypeParameterization(mapper, typeToResolve);
-
-			// the first type parameter of resolvedReturn should be what we want
-			GenericsType[] resolvedReturnGenerics = resolved.getGenericsTypes();
-			if (resolvedReturnGenerics != null && resolvedReturnGenerics.length > 0) {
-				return resolvedReturnGenerics[0].getType();
-			}
-		}
-
-		// this is hardcoded from DGM
-		if (collectionType.declaresInterface(VariableScope.INPUT_STREAM_CLASS)
-				|| collectionType.declaresInterface(VariableScope.DATA_INPUT_STREAM_CLASS)
-				|| collectionType.equals(VariableScope.INPUT_STREAM_CLASS)
-				|| collectionType.equals(VariableScope.DATA_INPUT_STREAM_CLASS)) {
-			return VariableScope.BYTE_CLASS_NODE;
-		}
-
-		return VariableScope.OBJECT_CLASS_NODE;
 	}
 
 	@Override
@@ -1239,18 +1293,22 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 
 	@Override
 	public void visitGStringExpression(GStringExpression node) {
+		scopes.peek().setCurrentNode(node);
 		boolean shouldContinue = handleExpression(node);
 		if (shouldContinue) {
 			super.visitGStringExpression(node);
 		}
+		scopes.peek().forgetCurrentNode();
 	}
 
 	@Override
 	public void visitListExpression(ListExpression node) {
+		scopes.peek().setCurrentNode(node);
 		boolean shouldContinue = handleExpression(node);
 		if (shouldContinue) {
 			super.visitListExpression(node);
 		}
+		scopes.peek().forgetCurrentNode();
 	}
 
 	@Override
@@ -1282,6 +1340,12 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		boolean shouldContinue = handleExpression(node);
 		// boolean shouldContinue = true;
 		if (shouldContinue) {
+			if (node.isSpreadSafe()) {
+				// most find the component type of the object expression type
+				ClassNode objType = objectExpressionType.pop();
+				objectExpressionType.push(VariableScope.extractElementType(objType));
+			}
+
 			node.getMethod().visit(this);
 			// this is the inferred return type of this method
 			// must pop now before visiting any other nodes
@@ -1308,6 +1372,12 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 
 			// returns true if this method call expression is the property field of another property expression
 			if (isObjectExpression(node)) {
+				if (node.isSpreadSafe()) {
+					ClassNode list = VariableScope.clonedList();
+					list.getGenericsTypes()[0].setType(propType);
+					list.getGenericsTypes()[0].setName(propType.getName());
+					propType = list;
+				}
 				objectExpressionType.push(propType);
 			}
 		} else {
@@ -1353,6 +1423,7 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 
 	@Override
 	public void visitPropertyExpression(PropertyExpression node) {
+		scopes.peek().setCurrentNode(node);
 		propertyExpression.push(node);
 		node.getObjectExpression().visit(this);
 		boolean shouldContinue;
@@ -1365,6 +1436,12 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 			shouldContinue = true;
 		}
 		if (shouldContinue) {
+			if (node.isSpreadSafe()) {
+				// most find the component type of the object expression type
+				ClassNode objType = objectExpressionType.pop();
+				objectExpressionType.push(VariableScope.extractElementType(objType));
+			}
+
 			node.getProperty().visit(this);
 
 			// don't care about either of these
@@ -1374,6 +1451,12 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 			// this is the type of this property expression
 			ClassNode propType = propertyExpressionType.pop();
 			if (isObjectExpression(node)) {
+				if (node.isSpreadSafe()) {
+					ClassNode list = VariableScope.clonedList();
+					list.getGenericsTypes()[0].setType(propType);
+					list.getGenericsTypes()[0].setName(propType.getName());
+					propType = list;
+				}
 				// returns true if this property expression is the property field of another property expression
 				objectExpressionType.push(propType);
 			}
@@ -1384,6 +1467,7 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 			// not popped earlier because the property field of the expression was not examined
 			objectExpressionType.pop();
 		}
+		scopes.peek().forgetCurrentNode();
 	}
 
 	@Override
@@ -1544,7 +1628,10 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		try {
 			if (method.isConstructor()) {
 				List<ConstructorNode> constructors = clazz.getDeclaredConstructors();
-				for (ConstructorNode constructorNode : constructors) {
+				if (constructors.size() == 0) {
+					return null;
+				}
+				outer: for (ConstructorNode constructorNode : constructors) {
 					String[] jdtParamTypes = method.getParameterTypes() == null ? new String[0] : method.getParameterTypes();
 					Parameter[] groovyParams = constructorNode.getParameters() == null ? new Parameter[0] : constructorNode
 							.getParameters();
@@ -1557,38 +1644,53 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 					if (groovyParams.length != jdtParamTypes.length) {
 						continue;
 					}
-					// FIXADE this is not precise. Doesn't take into account generics
 					for (int i = 0; i < groovyParams.length; i++) {
 						String groovyClassType = groovyParams[i].getType().getName();
 						if (!groovyClassType.startsWith("[")) { //$NON-NLS-1$
 							groovyClassType = Signature.createTypeSignature(groovyClassType, false);
 						}
 						if (!groovyClassType.equals(jdtParamTypes[i])) {
-							continue;
+							continue outer;
 						}
 					}
 					return constructorNode;
 				}
+				// no match found, just return the first
+				return constructors.get(0);
 			} else {
 				List<MethodNode> methods = clazz.getMethods(method.getElementName());
-				for (MethodNode methodNode : methods) {
+				if (methods.size() == 0) {
+					return null;
+				}
+
+				outer: for (MethodNode methodNode : methods) {
 					String[] jdtParamTypes = method.getParameterTypes() == null ? new String[0] : method.getParameterTypes();
 					Parameter[] groovyParams = methodNode.getParameters() == null ? new Parameter[0] : methodNode.getParameters();
 					if (groovyParams.length != jdtParamTypes.length) {
 						continue;
 					}
-					// FIXADE this is not precise. Doesn't take into account generics
-					for (int i = 0; i < groovyParams.length; i++) {
+					inner: for (int i = 0; i < groovyParams.length; i++) {
+						String simpleGroovyClassType = groovyParams[i].getType().getNameWithoutPackage();
+						if (!simpleGroovyClassType.startsWith("[")) { //$NON-NLS-1$
+							simpleGroovyClassType = Signature.createTypeSignature(simpleGroovyClassType, false);
+						}
+						if (simpleGroovyClassType.equals(jdtParamTypes[i])) {
+							continue inner;
+						}
+
 						String groovyClassType = groovyParams[i].getType().getName();
 						if (!groovyClassType.startsWith("[")) { //$NON-NLS-1$
 							groovyClassType = Signature.createTypeSignature(groovyClassType, false);
 						}
 						if (!groovyClassType.equals(jdtParamTypes[i])) {
-							continue;
+							continue outer;
 						}
 					}
 					return methodNode;
 				}
+
+				// no match found, just return the first
+				return methods.get(0);
 			}
 		} catch (JavaModelException e) {
 			Util.log(e, "Exception finding method " + method.getElementName() + " in class " + clazz.getName());
@@ -1608,6 +1710,13 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 		return fieldNode;
 	}
 
+	/**
+	 * Since AST transforms are turned off for reconcile operations, this method will always return null. But keep it here just in
+	 * case we decide to re-enable transforms for reconciles.
+	 * 
+	 * @param field
+	 * @return
+	 */
 	private boolean isLazy(FieldNode field) {
 		List<AnnotationNode> annotations = field.getAnnotations();
 		for (AnnotationNode annotation : annotations) {
@@ -1724,6 +1833,37 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 	}
 
 	/**
+	 * 
+	 * @param node
+	 * @return true iff the object expression associated with node is a static reference to a class declaration
+	 */
+	private boolean hasStaticObjectExpression(Expression node) {
+		if (!propertyExpression.isEmpty()) {
+			ASTNode maybeProperty = propertyExpression.peek();
+			if (maybeProperty instanceof PropertyExpression) {
+				PropertyExpression prop = (PropertyExpression) maybeProperty;
+				return prop.getObjectExpression() instanceof ClassExpression ||
+				// check to see if in a static scope
+						(prop.isImplicitThis() && scopes.peek().isStatic());
+			} else if (maybeProperty instanceof MethodCallExpression) {
+				MethodCallExpression prop = (MethodCallExpression) maybeProperty;
+				return prop.getObjectExpression() instanceof ClassExpression ||
+				// check to see if in a static scope
+						(prop.isImplicitThis() && scopes.peek().isStatic());
+			} else if (maybeProperty instanceof AttributeExpression) {
+				AttributeExpression prop = (AttributeExpression) maybeProperty;
+				return prop.getObjectExpression() instanceof ClassExpression ||
+				// check to see if in a static scope
+						(prop.isImplicitThis() && scopes.peek().isStatic());
+			} else {
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
+
+	/**
 	 * @param operation the operation of this binary expression
 	 * @param lhs the type of the lhs of the binary expression
 	 * @param rhs the type of the rhs of the binary expression
@@ -1742,11 +1882,21 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 					}
 				}
 
+				if (VariableScope.MAP_CLASS_NODE.equals(lhs)) {
+					// for maps, always use the type of value
+					return lhs.getGenericsTypes()[1].getType();
+				}
+
 				// deref...get component type of lhs
-				return VariableScope.deref(lhs);
+				return VariableScope.extractElementType(lhs);
+			case '*':
+				if (operation.equals("*.") || operation.equals("*.@")) {
+					// can we do better and parameterize the list?
+					return VariableScope.clonedList();
+				}
+				// fall through
 			case '-':
 			case '/':
-			case '*':
 			case '%':
 				// arithmetic operation
 				// lhs, if number type, else rhs if number type, else number
@@ -1764,20 +1914,41 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 				// includes != and !== and !!
 			case '<':
 			case '>':
-			case '&':
-			case '^':
 				if (operation.length() > 1) {
 					if (operation.equals("<<")) {
 						// list of rhs type
 						ClassNode listType = VariableScope.clone(VariableScope.LIST_CLASS_NODE);
 						listType.getGenericsTypes()[0].setType(rhs);
 						listType.getGenericsTypes()[0].setName(rhs.getName());
+						return listType;
+					} else if (operation.equals("<=>")) {
+						return VariableScope.INTEGER_CLASS_NODE;
 					}
-					// all booleans
-					return VariableScope.BOOLEAN_CLASS_NODE;
 				}
+				// all booleans
+				return VariableScope.BOOLEAN_CLASS_NODE;
+
+			case '&':
+			case '^':
+			case '|':
 				// bitwse operations, return lhs
 				return lhs;
+
+			case 'i':
+				if (operation.equals("is") || operation.equals("in")) {
+					return VariableScope.BOOLEAN_CLASS_NODE;
+				} else {
+					// unknown
+					return rhs;
+				}
+
+			case '.':
+				if (operation.equals(".&")) {
+					return ClassHelper.CLOSURE_TYPE;
+				} else {
+					// includes ".", "?:", "?.", ".@"
+					return rhs;
+				}
 
 			case '=':
 				if (operation.length() > 1) {
@@ -1785,11 +1956,13 @@ public class TypeInferencingVisitorWithRequestor extends ClassCodeVisitorSupport
 						return VariableScope.BOOLEAN_CLASS_NODE;
 					} else if (operation.charAt(1) == '~') {
 						// consider regex to be string
-						return VariableScope.STRING_CLASS_NODE;
+						return VariableScope.MATCHER_CLASS_NODE;
 					}
 				}
 				// drop through
+
 			default:
+				// "as"
 				// rhs by default
 				return rhs;
 		}

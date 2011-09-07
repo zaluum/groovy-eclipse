@@ -27,8 +27,10 @@ public class AllDSLTests {
         suite.addTest(PointcutEvaluationTests.suite());
         suite.addTest(MetaDSLInferencingTests.suite());
         suite.addTest(DSLInferencingTests.suite());
+        suite.addTest(BuiltInDSLInferencingTests.suite());
         suite.addTest(DSLStoreTests.suite());
         suite.addTestSuite(StringObjectVectorTests.class);
+        suite.addTestSuite(DSLContentAssistTests.class);
         return suite;
     }
 

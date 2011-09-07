@@ -510,6 +510,12 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
     
     protected void interfaceDef(AST classDef) {
         int oldInnerClassCounter = innerClassCounter;
+        innerInterfaceDef(classDef);
+        classNode = null;
+        innerClassCounter = oldInnerClassCounter;
+    }
+    
+    protected void innerInterfaceDef(AST classDef) {
         List<AnnotationNode> annotations = new ArrayList<AnnotationNode>();
         AST node = classDef.getFirstChild();
         int modifiers = Opcodes.ACC_PUBLIC;
@@ -542,7 +548,15 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
             node = node.getNextSibling();
         }
 
-        classNode = new ClassNode(dot(getPackageName(), name), modifiers, superClass, interfaces, null);
+        ClassNode outerClass = classNode;
+        if (classNode != null) {
+            name = classNode.getNameWithoutPackage() + "$" + name;
+            String fullName = dot(classNode.getPackageName(), name);
+            classNode = new InnerClassNode(classNode, fullName, modifiers, superClass, interfaces, null);
+        } else {
+            classNode = new ClassNode(dot(getPackageName(), name), modifiers, superClass, interfaces, null);
+        }
+        
         classNode.addAnnotations(annotations);
         classNode.setGenericsTypes(genericsType);
         configureAST(classNode, classDef);
@@ -551,11 +565,13 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         classNode.setNameEnd(nameEnd);
         // end
 
+        int oldClassCount = innerClassCounter;
         assertNodeType(OBJBLOCK, node);
         objectBlock(node);
         output.addClass(classNode);
-        classNode = null;
-        innerClassCounter = oldInnerClassCounter;
+
+        classNode = outerClass;
+        innerClassCounter = oldClassCount;
     }
     
     protected void classDef(AST classDef) {
@@ -587,6 +603,9 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         output.addClass(classNode);
         AnonymousInnerClassCarrier ret = new AnonymousInnerClassCarrier();
         ret.innerClass = classNode;
+        // GRECLIPSE start - configure the locations
+        configureAST(classNode, node);
+        // GRECLIPSE end
         classNode = oldNode;
         
         return ret;
@@ -700,6 +719,10 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
                     
                 case CLASS_DEF:
                     innerClassDef(node);
+                    break;
+                    
+                case INTERFACE_DEF:
+                    innerInterfaceDef(node);
                     break;
                     
                 default:
@@ -1295,6 +1318,12 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
     //-------------------------------------------------------------------------
 
     protected Statement statement(AST node) {
+        // GRECLIPSE: start
+        // GRECLIPSE-1038 avoid NPE on bad code
+        if (node == null) {
+            return new EmptyStatement();
+        }
+        // GRECLIPSE: end
         Statement statement = null;
         int type = node.getType();
         switch (type) {

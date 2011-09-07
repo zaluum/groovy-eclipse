@@ -15,15 +15,10 @@
  */
 package org.codehaus.groovy.eclipse.dsl;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IWorkspaceRoot;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.Path;
 
 /**
  * Manipulator of all preferences for DSLD settings
@@ -90,14 +85,16 @@ public class DSLPreferences {
     }
 
     private static String[] filter(String[] disabled) {
-        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
-        List<String> filtered = new ArrayList<String>(disabled.length);
-        for (String string : disabled) {
-            IResource r = root.getFile(new Path(string));
-            if (r.getType() == IResource.FILE && r.isAccessible()) {
-                filtered.add(string);
-            }
-        }
-        return filtered.toArray(new String[filtered.size()]);
+        // not working now
+//        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+//        List<String> filtered = new ArrayList<String>(disabled.length);
+//        for (String string : disabled) {
+//            IResource r = root.getFile(new Path(string));
+//            if (r.getType() == IResource.FILE && r.isAccessible()) {
+//                filtered.add(string);
+//            }
+//        }
+//        return filtered.toArray(new String[filtered.size()]);
+        return disabled;
     }
 }

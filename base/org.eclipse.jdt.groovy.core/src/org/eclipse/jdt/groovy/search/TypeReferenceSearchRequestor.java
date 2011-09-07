@@ -26,7 +26,9 @@ import org.codehaus.groovy.ast.ConstructorNode;
 import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.expr.ClassExpression;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jdt.core.search.SearchParticipant;
@@ -35,6 +37,7 @@ import org.eclipse.jdt.core.search.TypeReferenceMatch;
 import org.eclipse.jdt.groovy.core.util.ReflectionUtils;
 import org.eclipse.jdt.groovy.search.TypeLookupResult.TypeConfidence;
 import org.eclipse.jdt.internal.core.CompilationUnit;
+import org.eclipse.jdt.internal.core.search.matching.DeclarationOfReferencedTypesPattern;
 import org.eclipse.jdt.internal.core.search.matching.JavaSearchPattern;
 import org.eclipse.jdt.internal.core.search.matching.TypeReferencePattern;
 import org.eclipse.jdt.internal.core.util.Util;
@@ -46,13 +49,18 @@ import org.eclipse.jface.text.Position;
  * 
  */
 public class TypeReferenceSearchRequestor implements ITypeRequestor {
+	/**
+	 * 
+	 */
+	private static final String DOT = ".";
 	private final SearchRequestor requestor;
 	private final SearchParticipant participant;
 
-	private final String qualifier;
-	private final String simpleName;
+	private final char[] qualificationPattern;
+	private final char[] namePattern;
 	private final boolean isCaseSensitive;
 	private final boolean isCamelCase;
+	private final boolean findDeclaration;
 
 	private final Set<Position> acceptedPositions = new HashSet<Position>();
 	private char[] cachedContents;
@@ -61,14 +69,24 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 	public TypeReferenceSearchRequestor(TypeReferencePattern pattern, SearchRequestor requestor, SearchParticipant participant) {
 		this.requestor = requestor;
 		this.participant = participant;
-		char[] arr = (char[]) ReflectionUtils.getPrivateField(TypeReferencePattern.class, "simpleName", pattern);
-		this.simpleName = arr == null ? "" : new String(arr);
-		arr = (char[]) ReflectionUtils.getPrivateField(TypeReferencePattern.class, "qualification", pattern);
-		this.qualifier = (arr == null || arr.length == 0) ? "" : (new String(arr) + ".");
 		this.isCaseSensitive = ((Boolean) ReflectionUtils.getPrivateField(JavaSearchPattern.class, "isCaseSensitive", pattern))
 				.booleanValue();
+
+		this.namePattern = extractArray(pattern, "simpleName");
+		this.qualificationPattern = extractArray(pattern, "qualification");
 		this.isCamelCase = ((Boolean) ReflectionUtils.getPrivateField(JavaSearchPattern.class, "isCamelCase", pattern))
 				.booleanValue();
+
+		this.findDeclaration = pattern instanceof DeclarationOfReferencedTypesPattern;
+	}
+
+	protected char[] extractArray(TypeReferencePattern pattern, String fieldName) {
+		char[] arr;
+		arr = (char[]) ReflectionUtils.getPrivateField(TypeReferencePattern.class, fieldName, pattern);
+		if (!isCaseSensitive) {
+			arr = CharOperation.toLowerCase(arr);
+		}
+		return arr;
 	}
 
 	public VisitStatus acceptASTNode(ASTNode node, TypeLookupResult result, IJavaElement enclosingElement) {
@@ -95,8 +113,7 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 
 			if (type != null) {
 				type = removeArray(type);
-				String qualifiedName = type.getName();
-				if (qualifiedNameMatches(qualifiedName) && hasValidSourceLocation(node)) {
+				if (qualifiedNameMatches(type) && hasValidSourceLocation(node)) {
 					int start = -1;
 					int end = -1;
 
@@ -161,10 +178,8 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 						// constructors
 						Position position = new Position(start, end - start);
 						if (!acceptedPositions.contains(position)) {
-							SearchMatch match = new TypeReferenceMatch(enclosingElement, getAccuracy(result.confidence), start, end
-									- start, false, participant, enclosingElement.getResource());
 							try {
-								requestor.acceptSearchMatch(match);
+								requestor.acceptSearchMatch(createMatch(result, enclosingElement, start, end));
 								acceptedPositions.add(position);
 							} catch (CoreException e) {
 								Util.log(e, "Error accepting search match for " + enclosingElement); //$NON-NLS-1$
@@ -175,6 +190,31 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 			}
 		}
 		return VisitStatus.CONTINUE;
+	}
+
+	/**
+	 * @param result
+	 * @param enclosingElement
+	 * @param start
+	 * @param end
+	 * @return
+	 */
+	protected TypeReferenceMatch createMatch(TypeLookupResult result, IJavaElement enclosingElement, int start, int end) {
+		IJavaElement element;
+		if (findDeclaration) {
+			// don't use the enclosing element, but rather use the declaration of the type
+			try {
+				element = enclosingElement.getJavaProject().findType(result.type.getName().replace('$', '.'),
+						new NullProgressMonitor());
+			} catch (JavaModelException e) {
+				Util.log(e);
+				element = enclosingElement;
+			}
+		} else {
+			element = enclosingElement;
+		}
+		return new TypeReferenceMatch(element, getAccuracy(result.confidence), start, end - start, false, participant,
+				element.getResource());
 	}
 
 	/**
@@ -217,16 +257,60 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 		return declaration.getComponentType() != null ? removeArray(declaration.getComponentType()) : declaration;
 	}
 
-	private boolean qualifiedNameMatches(String qualifiedName) {
-		String newName = qualifiedName.replace('$', '.');
-		// don't do * matching or camel case matching yet
-		if (!isCaseSensitive /* && !isCamelCase */) {
-			newName = newName.toLowerCase();
+	private String[] extractNameAndQualification(ClassNode type) {
+		// qualification includes the full package name, plus all enclosing types with '.' separators
+		String qualification = type.getPackageName();
+		if (qualification == null) {
+			qualification = "";
 		}
-		if (newName.equals(qualifier + simpleName)) {
-			return true;
+
+		String semiQualified = type.getNameWithoutPackage();
+
+		String simple;
+		int lastDollar = semiQualified.lastIndexOf('$');
+		if (lastDollar > 0) {
+			simple = semiQualified.substring(lastDollar + 1);
+			semiQualified = semiQualified.replace('$', '.').substring(0, lastDollar);
+			if (qualification.length() == 0) {
+				qualification = semiQualified;
+			} else {
+				qualification += DOT + semiQualified;
+			}
+		} else {
+			simple = semiQualified;
 		}
-		return false;
+
+		return new String[] { qualification, simple };
+	}
+
+	private boolean qualifiedNameMatches(ClassNode type) {
+		String[] nameAndQualification = extractNameAndQualification(type);
+		String name, qualification;
+		qualification = nameAndQualification[0];
+		name = nameAndQualification[1];
+		if (!isCaseSensitive) {
+			name = name.toLowerCase();
+			qualification = qualification.toLowerCase();
+		}
+
+		boolean match = true;
+		if (namePattern != null) { // if pattern is null, then this means '*'
+			if (isCamelCase) {
+				match = CharOperation.camelCaseMatch(namePattern, name.toCharArray());
+			} else {
+				match = CharOperation.equals(namePattern, name.toCharArray());
+			}
+		}
+
+		if (match && qualificationPattern != null) {
+			if (isCamelCase) { // if pattern is null, then this means '*'
+				match = CharOperation.camelCaseMatch(qualificationPattern, qualification.toCharArray());
+			} else {
+				match = CharOperation.equals(qualificationPattern, qualification.toCharArray());
+			}
+		}
+
+		return match;
 	}
 
 	private class StartEnd {
@@ -293,7 +377,7 @@ public class TypeReferenceSearchRequestor implements ITypeRequestor {
 	 * @return
 	 */
 	private boolean shouldAlwaysBeAccurate() {
-		return requestor.getClass().getPackage().getName().indexOf("refactoring") != -1;
+		return requestor.getClass().getPackage().getName().indexOf("refactoring") != -1; //$NON-NLS-1$
 	}
 
 	private int getAccuracy(TypeConfidence confidence) {

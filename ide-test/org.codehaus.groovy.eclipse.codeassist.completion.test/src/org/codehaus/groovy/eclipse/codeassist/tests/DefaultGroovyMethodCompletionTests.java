@@ -14,6 +14,7 @@ package org.codehaus.groovy.eclipse.codeassist.tests;
 import org.codehaus.groovy.eclipse.codeassist.requestor.GroovyCompletionProposalComputer;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.tests.util.GroovyUtils;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
 
 /**
@@ -119,6 +120,56 @@ public class DefaultGroovyMethodCompletionTests extends CompletionTestCase {
         ICompilationUnit unit = createGroovyWithContents("Script", contents);
         ICompletionProposal[] proposals = performContentAssist(unit, getIndexOf(contents, "toURL().t"), GroovyCompletionProposalComputer.class);
         proposalExists(proposals, "text", 1);
+    }
+    
+    // tests GRECLIPSE-1158
+    public void testDateGM() throws Exception {
+        String contents = "new Date().toCal";
+        ICompilationUnit unit = createGroovyWithContents("Script", contents);
+        ICompletionProposal[] proposals = performContentAssist(unit, getIndexOf(contents, "toCal"), GroovyCompletionProposalComputer.class);
+        proposalExists(proposals, "toCalendar", 1);
+    }
+    
+    // tests GRECLIPSE-1158
+    public void testProcessGM() throws Exception {
+        String contents = "Process p\n" +
+        		"p.get";
+        ICompilationUnit unit = createGroovyWithContents("Script", contents);
+        ICompletionProposal[] proposals = performContentAssist(unit, getIndexOf(contents, "get"), GroovyCompletionProposalComputer.class);
+        if (GroovyUtils.GROOVY_LEVEL >= 18) {
+            proposalExists(proposals, "getIn", 1);
+        } else {
+            // groovy 1.7
+            proposalExists(proposals, "getIn", 2);
+        }
+    }
+    
+    // tests GRECLIPSE-1158
+    public void testXmlGM() throws Exception {
+        String contents = "byte[] p\n" +
+                "p.encodeBase64";
+        ICompilationUnit unit = createGroovyWithContents("Script", contents);
+        ICompletionProposal[] proposals = performContentAssist(unit, getIndexOf(contents, "encodeBase64"), GroovyCompletionProposalComputer.class);
+        if (GroovyUtils.GROOVY_LEVEL >= 18) {
+            proposalExists(proposals, "encodeBase64", 2);
+        } else {
+            // groovy 1.7
+            proposalExists(proposals, "encodeBase64", 4);
+        }
+    }
+    
+    // tests GRECLIPSE-1158
+    public void testEncodingGM() throws Exception {
+        String contents = "org.w3c.dom.NodeList p\n" +
+                "p.iterator";
+        ICompilationUnit unit = createGroovyWithContents("Script", contents);
+        ICompletionProposal[] proposals = performContentAssist(unit, getIndexOf(contents, "iterator"), GroovyCompletionProposalComputer.class);
+        if (GroovyUtils.GROOVY_LEVEL >= 18) {
+            proposalExists(proposals, "iterator", 2);
+        } else {
+            // groovy 1.7
+            proposalExists(proposals, "iterator", 3);
+        }
     }
     
     

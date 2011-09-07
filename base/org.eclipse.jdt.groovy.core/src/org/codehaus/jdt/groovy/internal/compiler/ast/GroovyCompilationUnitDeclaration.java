@@ -260,15 +260,17 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 		Map<String, ImportNode> importStatics = ImportNodeCompatibilityWrapper.getStaticImports(moduleNode);
 		Map<String, ImportNode> importStaticStars = ImportNodeCompatibilityWrapper.getStaticStarImports(moduleNode);
 		if (importNodes.size() > 0 || importPackages.size() > 0 || importStatics.size() > 0 || importStaticStars.size() > 0) {
-			int importNum = 0;
-			imports = new ImportReference[importNodes.size() + importPackages.size() + importStatics.size()
-					+ importStaticStars.size()];
+			List<ImportReference> importReferences = new ArrayList<ImportReference>();
 			for (ImportNode importNode : importNodes) {
 				char[][] splits = CharOperation.splitOn('.', importNode.getClassName().toCharArray());
 				ImportReference ref = null;
 				ClassNode type = importNode.getType();
 				int typeStartOffset = startOffset(type);
 				int typeEndOffset = endOffset(type);
+				if (typeStartOffset == 0) {
+					// not a real import, a fake one created during recovery
+					continue;
+				}
 				if (importNode.getAlias() != null && importNode.getAlias().length() > 0) {
 					// FIXASC will need extra positional info for the 'as' and the alias
 					ref = new AliasImportReference(importNode.getAlias().toCharArray(), splits, positionsFor(splits,
@@ -278,11 +280,15 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 							ClassFileConstants.AccDefault);
 				}
 				ref.sourceEnd = Math.max(typeEndOffset - 1, ref.sourceStart); // For error reporting, Eclipse wants -1
-				ref.declarationSourceStart = importNode.getStart();
-				ref.declarationSourceEnd = importNode.getEnd();
+				int start = importNode.getStart();
+				ref.declarationSourceStart = start;
+				int end = importNode.getEnd();
+				ref.declarationSourceEnd = end;
+
 				ref.declarationEnd = ref.sourceEnd;
-				imports[importNum++] = ref;
+				importReferences.add(ref);
 			}
+
 			for (ImportNode importPackage : importPackages) {
 				String importText = importPackage.getText();
 
@@ -299,7 +305,7 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 				ref.declarationSourceStart = importPackage.getStart();
 				ref.declarationSourceEnd = importPackage.getEnd();
 				ref.declarationEnd = ref.sourceEnd;
-				imports[importNum++] = ref;
+				importReferences.add(ref);
 			}
 			for (Map.Entry<String, ImportNode> importStatic : importStatics.entrySet()) {
 				ImportNode importNode = importStatic.getValue();
@@ -322,7 +328,7 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 				ref.declarationSourceStart = importNode.getStart();
 				ref.declarationSourceEnd = importNode.getEnd();
 				ref.declarationEnd = ref.sourceEnd;
-				imports[importNum++] = ref;
+				importReferences.add(ref);
 			}
 			for (Map.Entry<String, ImportNode> importStaticStar : importStaticStars.entrySet()) {
 				String classname = importStaticStar.getKey();
@@ -337,16 +343,25 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 				ref.declarationSourceStart = importNode.getStart();
 				ref.declarationSourceEnd = importNode.getEnd();
 				ref.declarationEnd = ref.sourceEnd;
-				imports[importNum++] = ref;
+				importReferences.add(ref);
 			}
 
 			// ensure proper lexical order
-			if (imports != null) {
+			if (importReferences.size() != 0) {
+				imports = importReferences.toArray(new ImportReference[importReferences.size()]);
 				Arrays.sort(imports, new Comparator<ImportReference>() {
 					public int compare(ImportReference left, ImportReference right) {
 						return left.sourceStart - right.sourceStart;
 					}
 				});
+				for (ImportReference ref : imports) {
+					if (ref.declarationSourceStart > 0 && (ref.declarationEnd - ref.declarationSourceStart + 1) < 0) {
+						throw new IllegalStateException("Import reference alongside class " + moduleNode.getClasses().get(0)
+								+ " will trigger later failure: " + ref.toString() + " declSourceStart="
+								+ ref.declarationSourceStart + " declEnd=" + +ref.declarationEnd);
+					}
+
+				}
 			}
 		}
 	}
@@ -571,11 +586,12 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 		for (Comment comment : groovySourceUnit.getComments()) {
 			if (comment.isJavadoc()) {
 				// System.out.println("Checking against comment ending on " + comment.getLastLine());
-				if (comment.getLastLine() + 1 == line || comment.getLastLine() + 2 == line) {
+				if (comment.getLastLine() + 1 == line || (comment.getLastLine() + 2 == line && !comment.usedUp)) {
 					int[] pos = comment.getPositions(compilationResult.lineSeparatorPositions);
 					// System.out.println("Comment says it is from line=" + comment.sline + ",col=" + comment.scol + " to line="
 					// + comment.eline + ",col=" + comment.ecol);
 					// System.out.println("Returning positions " + pos[0] + ">" + pos[1]);
+					comment.usedUp = true;
 					return new Javadoc(pos[0], pos[1]);
 				}
 			}
@@ -736,6 +752,26 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 	}
 
 	/**
+	 * Hold onto the groovy initializer so we can return it later. This is much easier than translating it into a JDT initializer
+	 * and back again later.
+	 */
+	static class FieldDeclarationWithInitializer extends FieldDeclaration {
+		private Expression initializer;
+
+		public FieldDeclarationWithInitializer(char[] name, int sourceStart, int sourceEnd) {
+			super(name, sourceStart, sourceEnd);
+		}
+
+		public void setGroovyInitializer(Expression initializer) {
+			this.initializer = initializer;
+		}
+
+		public Expression getGroovyInitializer() {
+			return this.initializer;
+		}
+	}
+
+	/**
 	 * Build JDT representations of all the fields on the groovy type. <br>
 	 * Enum field handling<br>
 	 * Groovy handles them as follows: they have the ACC_ENUM bit set and the type is the type of the declaring enum type. When
@@ -753,7 +789,8 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 				if (!isSynthetic) {
 					// JavaStubGenerator ignores private fields but I don't
 					// think we want to here
-					FieldDeclaration fieldDeclaration = new FieldDeclaration(fieldNode.getName().toCharArray(), 0, 0);
+					FieldDeclarationWithInitializer fieldDeclaration = new FieldDeclarationWithInitializer(fieldNode.getName()
+							.toCharArray(), 0, 0);
 					fieldDeclaration.annotations = transformAnnotations(fieldNode.getAnnotations());
 					if (!isEnumField) {
 						fieldDeclaration.modifiers = fieldNode.getModifiers() & ~0x4000; // 4000 == AccEnum
@@ -761,6 +798,7 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 					}
 					fieldDeclaration.javadoc = new Javadoc(108, 132);
 					fixupSourceLocationsForFieldDeclaration(fieldDeclaration, fieldNode, isEnumField);
+					fieldDeclaration.setGroovyInitializer(fieldNode.getInitialExpression());
 					fieldDeclarations.add(fieldDeclaration);
 				}
 			}
@@ -1245,18 +1283,22 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 	}
 
 	/**
-	 * Convert from an array ClassNode into a TypeReference.
+	 * Convert from an array ClassNode into a TypeReference. Name of the node is expected to be something like java.lang.String[][]
+	 * - primitives should be getting handled by the other create method (and have a sig like '[[I')
 	 */
-	private TypeReference createTypeReferenceForArrayName(ClassNode node, int start, int end) {
-		String signature = node.getName();
+	private TypeReference createTypeReferenceForArrayNameTrailingBrackets(ClassNode node, int start, int end) {
+		String name = node.getName();
 		int dim = 0;
+		int pos = name.length() - 2;
 		ClassNode componentType = node;
-		while (componentType.isArray()) {
+		// jump back counting dimensions
+		while (pos > 0 && name.charAt(pos) == '[') {
 			dim++;
+			pos -= 2;
 			componentType = componentType.getComponentType();
 		}
 		if (componentType.isPrimitive()) {
-			Integer ii = charToTypeId.get(signature.charAt(dim));
+			Integer ii = charToTypeId.get(name.charAt(dim));
 			if (ii == null) {
 				throw new IllegalStateException("node " + node + " reported it had a primitive component type, but it does not...");
 			} else {
@@ -1270,14 +1312,46 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 			throw new IllegalStateException("Array classnode with dimensions 0?? node:" + node.getName());
 		}
 		// array component is something like La.b.c; ... or sometimes just [[Z (where Z is a type, not primitive)
-		String arrayComponentTypename = signature.substring(dim);
-		if (arrayComponentTypename.charAt(arrayComponentTypename.length() - 1) == ';') {
-			arrayComponentTypename = signature.substring(dim + 1, signature.length() - 1); // chop off '['s 'L' and ';'
-		}
+		String arrayComponentTypename = name.substring(0, pos + 2);
 		if (arrayComponentTypename.indexOf(".") == -1) {
 			return createJDTArrayTypeReference(arrayComponentTypename, dim, start, end);
 		} else {
 			return createJDTArrayQualifiedTypeReference(arrayComponentTypename, dim, start, end);
+		}
+	}
+
+	/**
+	 * Format will be [[I or [[Ljava.lang.String; - this latter form is really not right but groovy can produce it so we need to
+	 * cope with it.
+	 */
+	private TypeReference createTypeReferenceForArrayNameLeadingBrackets(ClassNode node, int start, int end) {
+		String name = node.getName();
+		int dim = 0;
+		ClassNode componentType = node;
+		while (name.charAt(dim) == '[') {
+			dim++;
+			componentType = componentType.getComponentType();
+		}
+		if (componentType.isPrimitive()) {
+			Integer ii = charToTypeId.get(name.charAt(dim));
+			if (ii == null) {
+				throw new IllegalStateException("node " + node + " reported it had a primitive component type, but it does not...");
+			} else {
+				TypeReference baseTypeReference = TypeReference.baseTypeReference(ii, dim);
+				baseTypeReference.sourceStart = start;
+				baseTypeReference.sourceEnd = start + componentType.getName().length();
+				return baseTypeReference;
+			}
+		} else {
+			String arrayComponentTypename = name.substring(dim);
+			if (arrayComponentTypename.charAt(arrayComponentTypename.length() - 1) == ';') {
+				arrayComponentTypename = name.substring(dim + 1, name.length() - 1); // chop off '['s 'L' and ';'
+			}
+			if (arrayComponentTypename.indexOf(".") == -1) {
+				return createJDTArrayTypeReference(arrayComponentTypename, dim, start, end);
+			} else {
+				return createJDTArrayQualifiedTypeReference(arrayComponentTypename, dim, start, end);
+			}
 		}
 	}
 
@@ -1355,24 +1429,27 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 		List<TypeReference> typeArguments = null;
 
 		// need to distinguish between raw usage of a type 'List' and generics
-		// usage 'List<T>' - it basically depends upon whether the type variable reference can be
+		// usage 'List<T>' -
+		// it basically depends upon whether the type variable reference can be
 		// resolved within the current 'scope' - if it cannot then this is probably a raw
 		// reference (yes?)
 
 		if (classNode.isUsingGenerics()) {
 			GenericsType[] genericsInfo = classNode.getGenericsTypes();
-			for (int g = 0; g < genericsInfo.length; g++) {
-				// ClassNode typeArgumentClassNode = genericsInfo[g].getType();
-				TypeReference tr = createTypeReferenceForClassNode(genericsInfo[g]);
-				if (tr != null) {
-					if (typeArguments == null) {
-						typeArguments = new ArrayList<TypeReference>();
+			if (genericsInfo != null) {
+				for (int g = 0; g < genericsInfo.length; g++) {
+					// ClassNode typeArgumentClassNode = genericsInfo[g].getType();
+					TypeReference tr = createTypeReferenceForClassNode(genericsInfo[g]);
+					if (tr != null) {
+						if (typeArguments == null) {
+							typeArguments = new ArrayList<TypeReference>();
+						}
+						typeArguments.add(tr);
 					}
-					typeArguments.add(tr);
+					// if (!typeArgumentClassNode.isGenericsPlaceHolder()) {
+					// typeArguments.add(createTypeReferenceForClassNode(typeArgumentClassNode));
+					// }
 				}
-				// if (!typeArgumentClassNode.isGenericsPlaceHolder()) {
-				// typeArguments.add(createTypeReferenceForClassNode(typeArgumentClassNode));
-				// }
 			}
 		}
 
@@ -1382,9 +1459,11 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 			return new Wildcard(Wildcard.UNBOUND);
 		}
 
-		// array? [Ljava/lang/String;
-		if (name.charAt(0) == '[') {
-			return createTypeReferenceForArrayName(classNode, start, end);
+		int arrayLoc = name.indexOf("[");
+		if (arrayLoc == 0) {
+			return createTypeReferenceForArrayNameLeadingBrackets(classNode, start, end);
+		} else if (arrayLoc > 0) {
+			return createTypeReferenceForArrayNameTrailingBrackets(classNode, start, end);
 		}
 
 		if (nameToPrimitiveTypeId.containsKey(name)) {
@@ -1830,7 +1909,7 @@ public class GroovyCompilationUnitDeclaration extends CompilationUnitDeclaration
 
 		if (isEnumField) {
 			// they have no 'leading' type declaration or modifiers
-			fieldDeclaration.declarationSourceStart = fieldNode.getNameStart();
+			fieldDeclaration.declarationSourceStart = doc == null ? fieldNode.getNameStart() : doc.sourceStart;// fieldNode.getNameStart();
 			fieldDeclaration.declarationSourceEnd = fieldNode.getNameEnd() - 1;
 		} else {
 			fieldDeclaration.declarationSourceStart = doc == null ? fieldNode.getStart() : doc.sourceStart;

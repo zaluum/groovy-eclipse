@@ -50,10 +50,10 @@ public class MetaDSLInferencingTests extends AbstractDSLInferencingTest {
         assertType("currentType", "p.IPointcut", true);
     }
     public void testMetaDSL2() throws Exception {
-        assertType("registerPointcut", "java.lang.Object", true);
+        assertType("registerPointcut", "java.lang.Void", true);
     }
     public void testMetaDSL3() throws Exception {
-        assertType("supportsVersion", "java.lang.Object", true);
+        assertType("supportsVersion", "java.lang.Void", true);
     }
 
 
@@ -122,7 +122,7 @@ public class MetaDSLInferencingTests extends AbstractDSLInferencingTest {
             "b\n" +
             "}";
         String name = "b";
-        assertDeclaringType(contents, contents.lastIndexOf(name), contents.lastIndexOf(name) + name.length(), "Search", true);
+        assertDeclaringType(contents, contents.lastIndexOf(name), contents.lastIndexOf(name) + name.length(), "p.IPointcut", true);
     }
     
     /**

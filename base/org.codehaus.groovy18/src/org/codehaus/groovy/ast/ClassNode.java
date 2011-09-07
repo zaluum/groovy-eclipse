@@ -106,7 +106,7 @@ import org.objectweb.asm.Opcodes;
  *
  * @author <a href="mailto:james@coredevelopers.net">James Strachan</a>
  * @author Jochen Theodorou
- * @version $Revision: 21269 $
+ * @version $Revision$
  */
 public class ClassNode extends AnnotatedNode implements Opcodes {
     private static class MapOfLists {
@@ -255,36 +255,62 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
      */
     public ClassNode(ClassNode componentType) {
     	// GRECLIPSE: start
-    	/*{
-        this(componentType.getName()+"[]", ACC_PUBLIC, ClassHelper.OBJECT_TYPE);
-        }*/ 
+    	///*{
+        // this(componentType.getName()+"[]", ACC_PUBLIC, ClassHelper.OBJECT_TYPE);
+        //}*/ 
         // newcode:
-        // elsewhere the 'name' for an array is considered to the be, for example "[Ljava.lang.String;" for String[] (see BytecodeHelper)
-    	// I think this code ought to be doing a similar thing
-        this("["+getTheNameMightBeArray(componentType)/*componentType.getName()+"[]"*/, ACC_PUBLIC, ClassHelper.OBJECT_TYPE);  
+        this(computeArrayName(componentType), ACC_PUBLIC, ClassHelper.OBJECT_TYPE);  
         // end
         this.componentType = componentType.redirect();
         isPrimaryNode=false;
     }
 
     // GRECLIPSE: start
-    public static String getTheNameMightBeArray(ClassNode componentType) {
+    /**
+     * For a given component type compute the right 'name'.  Rules are as follows:
+     * <ul>
+     * <li> primitive component types: result is a name like "[I" or "[Z"
+     * <li> array component types: follow the pattern for the component, if it starts '[' add another leading. if it ends with '[]' then do that
+     * <li> reference types: Create [Lcom.foo.Bar; - this isn't quite right really as it should have '/' in...
+     * </ul>
+     */
+    public static String computeArrayName(ClassNode componentType) {
     	String n = componentType.getName();
-    	if (componentType.isArray() || n.length()==1) { // TODO needs to cope with basic primitive names (char/etc)
-        	return componentType.getName();    		
+    	if (componentType.isPrimitive()) {
+    		int len=n.length();
+    		if (len==7) {
+    			// boolean
+    			return "[Z";
+    		} else if (len==6) {
+    			// double
+    			return "[D";
+    		} else if (len==5) {
+    			if (n.charAt(0)=='f') {
+    				return "[F";//float
+    			} else {
+    				return "[S";//short
+    			}
+    		} else if (len==4) {
+    			 switch (n.charAt(0)) {
+    			 case 'b': return "[B";//byte
+    			 case 'c': return "[C";//char
+    			 default:
+    				 //case 'l': 
+    				 return "[J";//long
+    			 }
+    		} else {
+    			return "[I";//int
+    		}    		
+    	} else if (componentType.isArray()) {
+    		// follow the pattern:
+    		if (n.charAt(0)=='[') {
+    			return new StringBuilder("[").append(n).toString();
+    		} else {
+    			return new StringBuilder(n).append("[]").toString();    			
+    		}  		
     	} else {
-    		if (Character.isLowerCase(n.charAt(0))) {
-    			if (n.equals("int")) { return "I"; }
-	    		else if (n.equals("long")) { return "J"; }
-	    		else if (n.equals("short")) { return "S"; }
-	    		else if (n.equals("boolean")) { return "Z"; }
-	    		else if (n.equals("char")) { return "C"; }
-	    		else if (n.equals("byte")) { return "B"; }
-	    		else if (n.equals("float")) { return "F"; }
-	    		else if (n.equals("double")) { return "D"; }
-    		}
-    		// FIXASC wasteful way to build strings
-    		return "L"+componentType.getName()+";";
+    		// reference type:
+    		return new StringBuilder("[L").append(componentType.getName()).append(";").toString();
     	}
     }
     // end
@@ -311,7 +337,6 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
         isPrimaryNode=false;
     }
 
-    // GRECLIPSE: from private to protected
     /**
      * The complete class structure will be initialized only when really
      * needed to avoid having too many objects during compilation
@@ -758,6 +783,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
 
     public boolean equals(Object o) {
         if (redirect!=null) return redirect().equals(o);
+        if (!(o instanceof ClassNode)) return false;
         ClassNode cn = (ClassNode) o;
         return (cn.getName().equals(getName()));
     }
@@ -997,7 +1023,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
      *         i.e. it implements GroovyObject
      */
     public boolean isDerivedFromGroovyObject() {
-        return implementsInterface(ClassHelper.make(GroovyObject.class));
+        return implementsInterface(ClassHelper.GROOVY_OBJECT_TYPE);
     }
 
     /**
@@ -1164,15 +1190,19 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
     }
 
     public MethodNode getSetterMethod(String setterName) {
+        return getSetterMethod(setterName, true);
+    }
+
+    public MethodNode getSetterMethod(String setterName, boolean voidOnly) {
         for (MethodNode method : getDeclaredMethods(setterName)) {
             if (setterName.equals(method.getName())
-                    && ClassHelper.VOID_TYPE==method.getReturnType()
+                    && (!voidOnly || ClassHelper.VOID_TYPE==method.getReturnType())
                     && method.getParameters().length == 1) {
                 return method;
             }
         }
         ClassNode parent = getSuperClass();
-        if (parent!=null) return parent.getSetterMethod(setterName);
+        if (parent!=null) return parent.getSetterMethod(setterName, voidOnly);
         return null;
     }
 
@@ -1422,6 +1452,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
             setRedirect(cn);
             return redirect().clazz;
         }
+        // GRECLIPSE
         if (redirect().getClass().getName().endsWith("JDTClassNode")) {
         	// special!
         	return redirect().getTypeClass();

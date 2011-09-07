@@ -27,6 +27,7 @@ import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.eclipse.jdt.groovy.search.TypeLookupResult.TypeConfidence;
+import org.eclipse.jdt.groovy.search.VariableScope.VariableInfo;
 
 /**
  * @author Andrew Eisenberg
@@ -64,22 +65,36 @@ public abstract class AbstractSimplifiedTypeLookup implements ITypeLookup {
 	}
 
 	public final TypeLookupResult lookupType(Expression node, VariableScope scope, ClassNode objectExpressionType) {
-		if (node instanceof ConstantExpression) {
-			ClassNode declaringType = objectExpressionType != null ? objectExpressionType : scope.getEnclosingTypeDeclaration();
-			TypeAndDeclaration tAndD = lookupTypeAndDeclaration(declaringType, ((ConstantExpression) node).getText(), scope);
-			if (tAndD != null) {
-				return new TypeLookupResult(tAndD.type, tAndD.declaringType == null ? declaringType : tAndD.declaringType,
-						tAndD.declaration, TypeConfidence.LOOSELY_INFERRED, scope, tAndD.extraDoc);
-			}
-		} else if (node instanceof VariableExpression) {
-			ClassNode declaringType = objectExpressionType != null ? objectExpressionType : scope.getEnclosingTypeDeclaration();
-			TypeAndDeclaration tAndD = lookupTypeAndDeclaration(declaringType, ((VariableExpression) node).getName(), scope);
-			if (tAndD != null) {
-				return new TypeLookupResult(tAndD.type, tAndD.declaringType == null ? declaringType : tAndD.declaringType,
-						tAndD.declaration, TypeConfidence.LOOSELY_INFERRED, scope, tAndD.extraDoc);
+		ClassNode declaringType;
+		if (objectExpressionType != null) {
+			declaringType = objectExpressionType;
+		} else {
+			VariableInfo info = scope.lookupName("this"); //$NON-NLS-1$
+			if (info != null) {
+				declaringType = info.declaringType;
+			} else {
+				declaringType = scope.getEnclosingTypeDeclaration();
 			}
 		}
+		TypeAndDeclaration tAndD = null;
+		if (node instanceof ConstantExpression) {
+			tAndD = lookupTypeAndDeclaration(declaringType, ((ConstantExpression) node).getText(), scope);
+		} else if (node instanceof VariableExpression) {
+			tAndD = lookupTypeAndDeclaration(declaringType, ((VariableExpression) node).getName(), scope);
+		}
+
+		if (tAndD != null) {
+			return new TypeLookupResult(tAndD.type, tAndD.declaringType == null ? declaringType : tAndD.declaringType,
+					tAndD.declaration, confidence(), scope, tAndD.extraDoc);
+		}
 		return null;
+	}
+
+	/**
+	 * @return the confidence level of lookup results for this type lookup. Defaults to {@link TypeConfidence#LOOSELY_INFERRED}
+	 */
+	protected TypeConfidence confidence() {
+		return TypeConfidence.LOOSELY_INFERRED;
 	}
 
 	public final TypeLookupResult lookupType(FieldNode node, VariableScope scope) {

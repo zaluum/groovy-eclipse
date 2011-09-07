@@ -16,25 +16,17 @@
 
 package org.codehaus.groovy.eclipse.editor.highlighting;
 
-import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
 import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.AnnotatedNode;
-import org.codehaus.groovy.ast.AnnotationNode;
-import org.codehaus.groovy.ast.ClassHelper;
-import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
-import org.codehaus.groovy.ast.ImportNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.expr.Expression;
-import org.codehaus.groovy.ast.expr.MethodCallExpression;
-import org.codehaus.groovy.ast.expr.StaticMethodCallExpression;
 import org.codehaus.groovy.eclipse.editor.highlighting.HighlightedTypedPosition.HighlightKind;
-import org.codehaus.jdt.groovy.internal.compiler.ast.JDTNode;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.groovy.search.ITypeRequestor;
 import org.eclipse.jdt.groovy.search.TypeLookupResult;
@@ -48,7 +40,7 @@ import org.eclipse.jface.text.Position;
  * @author Andrew Eisenberg
  * @created Oct 29, 2009
  */
-public class SemanticHighlightingReferenceRequestor implements ITypeRequestor {
+public class SemanticHighlightingReferenceRequestor extends SemanticReferenceRequestor implements ITypeRequestor {
     /**
      * this set contains positions in a non-overlapping,
      * increasing lexical order
@@ -109,81 +101,15 @@ public class SemanticHighlightingReferenceRequestor implements ITypeRequestor {
             }
         }
 
-        if (pos != null && (pos.getOffset() > 0 || pos.getLength() > 1)) {
+        if (pos != null && ((pos.getOffset() > 0 || pos.getLength() > 1) ||
+        // Expression nodes can be still valid and have an offset of 0 and a
+        // length of 1
+        // whereas field/method nodes, this is not allowed.
+                node instanceof Expression)) {
             typedPosition.add(pos);
         }
 
         return VisitStatus.CONTINUE;
-    }
-
-    private boolean isNumber(ClassNode type) {
-        return ClassHelper.isNumberType(type) || type == ClassHelper.BigDecimal_TYPE || type == ClassHelper.BigInteger_TYPE;
-    }
-
-    private Position getPosition(ASTNode node) {
-        int start, length;
-        if (node instanceof MethodNode || node instanceof FieldNode || node instanceof PropertyNode
-                || (node instanceof ClassNode && ((ClassNode) node).getNameEnd() > 0)) {
-            AnnotatedNode an = (AnnotatedNode) node;
-            start = an.getNameStart();
-            length = an.getNameEnd() - start + 1;
-        } else if (node instanceof ImportNode) {
-            ClassNode clazz = ((ImportNode) node).getType();
-            start = clazz.getStart();
-            length = clazz.getLength();
-        } else if (node instanceof StaticMethodCallExpression) {
-            start = node.getStart();
-            length = ((StaticMethodCallExpression) node).getMethod().length();
-        } else if (node instanceof MethodCallExpression) {
-            Expression e = ((MethodCallExpression) node).getMethod();
-            // FIXADE : determine if we need to ignore funky method calls that
-            // use things like GStrings in the
-            // name
-            // if (e instanceof ConstantExpression) {
-                start = e.getStart();
-            length = e.getLength();
-            // }
-        } else {
-            start = node.getStart();
-            length = node.getLength();
-        }
-
-        return new Position(start, length);
-    }
-
-    private boolean isDeprecated(ASTNode declaration) {
-        if (declaration instanceof ClassNode) {
-            declaration = ((ClassNode) declaration).redirect();
-        }
-
-        if (declaration instanceof PropertyNode && ((PropertyNode) declaration).getField() != null) {
-            // make sure we are using the associated field node because property nodes are never the declaration
-            declaration = ((PropertyNode) declaration).getField();
-        }
-
-        if (declaration instanceof JDTNode) {
-            return ((JDTNode) declaration).isDeprecated();
-        } else if (declaration instanceof ClassNode || declaration instanceof FieldNode || declaration instanceof MethodNode) {
-            return hasDeprecatedAnnotation((AnnotatedNode) declaration);
-        }
-
-        return false;
-    }
-
-    private boolean hasDeprecatedAnnotation(AnnotatedNode declaration) {
-        List<AnnotationNode> anns = declaration.getAnnotations();
-        for (AnnotationNode ann : anns) {
-            if (ann.getClassNode() != null && ann.getClassNode().getName().equals("java.lang.Deprecated")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isStatic(ASTNode declaration) {
-        return (declaration instanceof MethodNode && ((MethodNode) declaration).isStatic())
-                || (declaration instanceof PropertyNode && ((PropertyNode) declaration).isStatic())
-                || (declaration instanceof FieldNode && ((FieldNode) declaration).isStatic());
     }
 
 }

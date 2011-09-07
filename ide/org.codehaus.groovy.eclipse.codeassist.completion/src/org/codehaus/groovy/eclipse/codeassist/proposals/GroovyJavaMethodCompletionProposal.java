@@ -40,6 +40,9 @@ public class GroovyJavaMethodCompletionProposal extends JavaMethodCompletionProp
     private final ProposalFormattingOptions proposalOptions;
     private String contributor;
 
+    // if true, shows the context only and does not
+    private boolean contextOnly;
+
     public GroovyJavaMethodCompletionProposal(CompletionProposal proposal,
             JavaContentAssistInvocationContext context, ProposalFormattingOptions groovyFormatterPrefs) {
         super(proposal, context);
@@ -53,6 +56,10 @@ public class GroovyJavaMethodCompletionProposal extends JavaMethodCompletionProp
         this.contributor = contributor;
     }
 
+
+    public void contextOnly() {
+        contextOnly = true;
+    }
 
     @Override
     protected StyledString computeDisplayString() {
@@ -130,13 +137,10 @@ public class GroovyJavaMethodCompletionProposal extends JavaMethodCompletionProp
      */
     @Override
     protected String computeReplacementString() {
-        // with no arguments, there is nothing groovy to do.
-        if (!hasArgumentList() || !hasArgumentList()) {
-            return super.computeReplacementString();
+        if (contextOnly) {
+            return "";
         }
 
-        // we're inserting a method plus the argument list - respect formatter preferences
-        StringBuffer buffer= new StringBuffer();
         char[] proposalName = fProposal.getName();
         boolean hasWhitespace = false;
         for (int i = 0; i < proposalName.length; i++) {
@@ -144,6 +148,14 @@ public class GroovyJavaMethodCompletionProposal extends JavaMethodCompletionProp
                 hasWhitespace = true;
             }
         }
+        // with no arguments, there is nothing groovy to do.
+        if ((!hasParameters() || !hasArgumentList()) && !hasWhitespace) {
+            return super.computeReplacementString();
+        }
+
+        // we're inserting a method plus the argument list - respect formatter
+        // preferences
+        StringBuffer buffer = new StringBuffer();
         char[] newProposalName;
         if (hasWhitespace) {
             newProposalName = CharOperation.concat(new char[] {'"'}, CharOperation.append(proposalName, '"'));

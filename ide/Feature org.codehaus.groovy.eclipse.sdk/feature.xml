@@ -12,7 +12,7 @@
 <feature
       id="org.codehaus.groovy.eclipse.sdk"
       label="%featureName"
-      version="2.5.1.qualifier"
+      version="2.5.2.qualifier"
       provider-name="%providerName">
 
    <description url="%descriptionURL">
@@ -41,6 +41,10 @@
 
    <includes
          id="org.codehaus.groovy.jdt.patch.source"
+         version="0.0.0"/>
+
+   <includes
+         id="org.codehaus.groovy.m2eclipse.source"
          version="0.0.0"/>
 
    <includes

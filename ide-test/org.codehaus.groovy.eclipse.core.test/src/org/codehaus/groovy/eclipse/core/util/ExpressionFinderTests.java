@@ -207,7 +207,39 @@ public class ExpressionFinderTests extends TestCase {
 		doSplit("list.collect { it.toString } .class", "list.collect { it.toString }", "class");
 	}
 
-	public void testFailSplit1() {
+    public void testSplit8() {
+        doSplit("[].do", "[]", "do");
+    }
+
+    public void testSplit9() {
+        doSplit("\n\n\t[].do", "[]", "do");
+    }
+
+    public void testSplit10() {
+        doSplit("\n\n\t[10].do", "[10]", "do");
+    }
+
+    public void testSplit11() {
+        doSplit("\n\n\t[[]].do", "[[]]", "do");
+    }
+
+    public void testSplit12() {
+        doSplit("\n\n\t[1:1].do", "[1:1]", "do");
+    }
+
+    public void testSplit13() {
+        doSplit("[x:1,y:2,z:3]*.g", "[x:1,y:2,z:3]", "g");
+    }
+
+    public void testSplit14() {
+        doSplit("[x:1,y:2,z:3].g", "[x:1,y:2,z:3]", "g");
+    }
+
+    public void testSplit15() {
+        doSplit("[x:1,y:2,z:3]?.g", "[x:1,y:2,z:3]", "g");
+    }
+
+    public void testFailSplit1() {
 		failSplit("boo()");
 	}
 

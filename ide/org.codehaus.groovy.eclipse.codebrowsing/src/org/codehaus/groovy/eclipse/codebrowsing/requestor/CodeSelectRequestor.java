@@ -124,6 +124,13 @@ public class CodeSelectRequestor implements ITypeRequestor {
                     if (declaringType != null) {
                         // find it in the java model
                         IType type = project.groovyClassToJavaType(declaringType);
+                        if (type == null && !unit.isOnBuildPath()) {
+                            // try to find it in the current compilation unit
+                            type = unit.getType(declaringType.getNameWithoutPackage());
+                            if (! type.exists()) {
+                                type = null;
+                            }
+                        }
                         if (type != null) {
                             try {
                                 // find the requested java element
@@ -206,15 +213,18 @@ public class CodeSelectRequestor implements ITypeRequestor {
             if (maybeRequested == null) {
                 // try something else because source location not set right
                 String name = null;
+                int preferredParamNumber = -1;
                 if (result.declaration instanceof MethodNode) {
                     name = ((MethodNode) result.declaration).getName();
+                    Parameter[] parameters = ((MethodNode) result.declaration).getParameters();
+                    preferredParamNumber = parameters == null ? 0 : parameters.length;
                 } else if (result.declaration instanceof PropertyNode) {
                     name = ((PropertyNode) result.declaration).getName();
                 } else if (result.declaration instanceof FieldNode) {
                     name = ((FieldNode) result.declaration).getName();
                 }
                 if (name != null) {
-                    maybeRequested = findElement(type, name);
+                    maybeRequested = findElement(type, name, preferredParamNumber);
                 }
                 if (maybeRequested == null) {
                     // still couldn't find anything
@@ -344,6 +354,12 @@ public class CodeSelectRequestor implements ITypeRequestor {
      * @return
      */
     private String createUniqueKey(AnnotatedNode node, ClassNode resolvedType, ClassNode resolvedDeclaringType, IJavaElement maybeRequested) {
+        if (resolvedDeclaringType == null) {
+            resolvedDeclaringType = node.getDeclaringClass();
+            if (resolvedDeclaringType == null) {
+                resolvedDeclaringType = VariableScope.OBJECT_CLASS_NODE;
+            }
+        }
         StringBuilder sb = new StringBuilder();
         if (node instanceof PropertyNode) {
             node = ((PropertyNode) node).getField();
@@ -391,11 +407,15 @@ public class CodeSelectRequestor implements ITypeRequestor {
         StringBuilder sb = new StringBuilder();
         sb.append(createUniqueKeyForClass(node.getDeclaringClass(), resolvedDeclaringType));
         sb.append('.').append(actualField.getElementName()).append(')');
-        sb.append(createUniqueKeyForResolvedClass(resolvedType));
+        ClassNode typeOfField = node.getName().startsWith("set")  && node.getParameters() != null && node.getParameters().length > 0 ? node.getParameters()[0].getType(): resolvedType;
+        sb.append(createUniqueKeyForResolvedClass(typeOfField));
         return sb;
     }
     
     private StringBuilder createUniqueKeyForResolvedClass(ClassNode resolvedType) {
+        if (resolvedType.getName().equals("java.lang.Void")) {
+            resolvedType = VariableScope.VOID_CLASS_NODE;
+        }
         return new StringBuilder(Signature.createTypeSignature(createGenericsAwareName(resolvedType, false/*fully qualified*/), true/*must resolve*/).replace('.', '/'));
     }
     /**
@@ -405,7 +425,6 @@ public class CodeSelectRequestor implements ITypeRequestor {
      * @return
      */
     private StringBuilder createUniqueKeyForClass(ClassNode unresolvedType, ClassNode resolvedDeclaringType) {
-        
     	GenericsMapper mapper = GenericsMapper.gatherGenerics(resolvedDeclaringType, resolvedDeclaringType.redirect());
     	ClassNode resolvedType = VariableScope.resolveTypeParameterization(mapper, VariableScope.clone(unresolvedType));
     	return createUniqueKeyForResolvedClass(resolvedType);
@@ -428,10 +447,11 @@ public class CodeSelectRequestor implements ITypeRequestor {
      * May return null
      * @param type
      * @param text
+     * @param preferredParamNumber TODO
      * @return
      * @throws JavaModelException 
      */
-    private IJavaElement findElement(IType type, String text) throws JavaModelException {
+    private IJavaElement findElement(IType type, String text, int preferredParamNumber) throws JavaModelException {
         if (text.equals(type.getElementName())) {
             return type;
         }
@@ -441,19 +461,29 @@ public class CodeSelectRequestor implements ITypeRequestor {
         String capitalized = Character.toTitleCase(text.charAt(0)) + text.substring(1);
         String setMethod = "set" + capitalized;
         String getMethod = "get" + capitalized;
+        String isMethod = "is" + capitalized;
         
         
+        IMethod lastFound = null;
         for (IMethod method : type.getMethods()) {
             if (method.getElementName().equals(text)) {
-                return method;
+                // prefer methods with the appropriate number of parameters
+                if (method.getParameterTypes().length == preferredParamNumber) {
+                    return method;
+                } else {
+                    lastFound = method;
+                }
             }
+        }
+        if (lastFound != null) {
+            return lastFound;
         }
         
         IField field = type.getField(text);
-        if (!field.exists() && text.length() > 3 &&
-                (text.startsWith("get") || text.startsWith("set"))) {
+        String prefix;
+        if (!field.exists() && (prefix = extractPrefix(text)) != null) {
             // this is a property
-            String newName = Character.toLowerCase(text.charAt(3)) + text.substring(4);
+            String newName = Character.toLowerCase(text.charAt(prefix.length())) + text.substring(prefix.length()+1);
             field = type.getField(newName);
         }
         if (field.exists()) {
@@ -462,8 +492,26 @@ public class CodeSelectRequestor implements ITypeRequestor {
         
         for (IMethod method : type.getMethods()) {
             if (method.getElementName().equals(setMethod) ||
-                    method.getElementName().equals(getMethod)) {
+                    method.getElementName().equals(getMethod) ||
+                    method.getElementName().equals(isMethod)) {
                 return method;
+            }
+        }
+        return null;
+    }
+    
+    private String extractPrefix(String text) {
+        if (text.startsWith("is")) {
+            if (text.length() > 2) {
+                return "is";
+            }
+        } else if (text.startsWith("get")) {
+            if (text.length() > 3) {
+                return "get";
+            }
+        } else if (text.startsWith("set")) {
+            if (text.length() > 3) {
+                return "set";
             }
         }
         return null;

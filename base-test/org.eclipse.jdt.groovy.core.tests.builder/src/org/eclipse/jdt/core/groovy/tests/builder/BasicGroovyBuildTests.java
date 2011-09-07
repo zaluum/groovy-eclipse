@@ -16,7 +16,16 @@ import java.util.StringTokenizer;
 
 import junit.framework.Test;
 
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.FieldNode;
+import org.codehaus.groovy.ast.PropertyNode;
+import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
+import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.FieldExpression;
+import org.codehaus.groovy.ast.expr.PropertyExpression;
+import org.codehaus.groovy.ast.stmt.ExpressionStatement;
+import org.codehaus.groovy.ast.stmt.ReturnStatement;
 import org.codehaus.jdt.groovy.internal.compiler.ast.JDTResolver;
 import org.codehaus.jdt.groovy.model.GroovyCompilationUnit;
 import org.eclipse.core.resources.IFile;
@@ -28,6 +37,8 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.tests.builder.Problem;
 import org.eclipse.jdt.core.tests.util.Util;
 import org.eclipse.jdt.core.util.CompilerUtils;
+import org.eclipse.jdt.groovy.search.VariableScope;
+import org.eclipse.jdt.internal.core.builder.AbstractImageBuilder;
 
 /**
  * Basic tests for the builder - compiling and running some very simple java and groovy code
@@ -1270,6 +1281,200 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 		executeClass(projectPath, "MyTest", "success", null);
 	}
 	
+	// The first groovy++ test
+	public void testGpp1() throws Exception {
+		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		env.addGroovyPlusPlusJar(projectPath);
+		fullBuild(projectPath);
+
+		// remove old package fragment root so that names don't collide
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+
+		env.addGroovyClass(root, "", "Inferer",
+				"@Typed \n"+
+				"class Inferer {\n" + 
+				"  public static void main(String []argv) {\n"+
+				"    new Inferer().foo('abc')\n"+
+				"  }\n"+
+				"  public void m(List<String> ls) {\n"+
+				"	 for (l in ls) {\n"+
+				"	   foo(l) \n"+
+				"    }\n" + 
+				"  }\n"+
+				"  public void foo(String s) {\n"+
+				"    new RuntimeException().printStackTrace(System.out)\n"+
+				"  }\n" +
+				"}");
+
+		incrementalBuild(projectPath);
+		expectingNoProblems();
+		expectingCompiledClassesV("Inferer");
+
+		// Expecting a minimal stack trace:
+		executeClass(projectPath, "Inferer", 
+				"java.lang.RuntimeException\n" + 
+				"	at Inferer.foo(Inferer.groovy:12)\n" + 
+				"	at Inferer.main(Inferer.groovy:4)\n", "");
+	}
+	
+	/**
+	 * This is the groovy code that grunit stuff replaces, 
+	 * just checking if it works in standard form.
+	 */
+	public void testGrunit_1() throws Exception {
+		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		env.addJUnitJar(projectPath);
+		env.addGroovyPlusPlusJar(projectPath);
+		fullBuild(projectPath);
+
+		// remove old package fragment root so that names don't collide
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+
+		env.addGroovyClass(root, "", "Testy",
+			"class Testy extends GroovyTestCase {\n"+
+			"  void testCompilerNotNull () { \n"+
+			"     assertTrue 2==2\n"+
+			"  }\n"+
+			"\n"+
+			"  static void main (String [] args) {\n"+
+			"     junit.textui.TestRunner.run(Testy)\n"+
+			"  }\n"+
+			"} \n");
+
+		incrementalBuild(projectPath);
+		expectingNoProblems();
+		expectingCompiledClassesV("Testy");
+
+		executeClass(projectPath, "Testy", "OK (1 test)\n", "");
+	}
+	
+	/**
+	 * same as test above *but* uses .grunit suffix
+	 */
+	public void testGrunit_2() throws Exception {
+		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		env.addJUnitJar(projectPath);
+		env.addGroovyPlusPlusJar(projectPath);
+		fullBuild(projectPath);
+
+		// remove old package fragment root so that names don't collide
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+
+		env.addGroovyClassWithSuffix(root, "", "Testy", "grunit",
+			"testOtherThing() {\n"+
+			"  assertTrue 1==1\n"+
+			"}\n"+
+			"assertTrue 2==2\n");
+
+		incrementalBuild(projectPath);
+		expectingNoProblems();
+		expectingCompiledClassesV("Testy");
+
+		executeClass(projectPath, "Testy", "OK (2 tests)\n", "");
+	}
+
+	
+	/**
+	 * Checks that the content type is registered correctly.
+	 */
+	public void testDotGppFiles() throws Exception {
+		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		env.addGroovyPlusPlusJar(projectPath);
+		fullBuild(projectPath);
+
+		// remove old package fragment root so that names don't collide
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+
+		env.addGroovyClassWithSuffix(root, "", "Inferer", "gpp",
+				"class Inferer {\n" + 
+				"  public static void main(String []argv) {\n"+
+				"    new Inferer().foo('abc')\n"+
+				"  }\n"+
+				"  public void m(List<String> ls) {\n"+
+				"	 for (l in ls) {\n"+
+				"	   foo(l) \n"+
+				"    }\n" + 
+				"  }\n"+
+				"  public void foo(String s) {\n"+
+				"    new RuntimeException().printStackTrace(System.out)\n"+
+				"  }\n" +
+				"}");
+
+		incrementalBuild(projectPath);
+		expectingNoProblems();
+		expectingCompiledClassesV("Inferer");
+
+		// Expecting a minimal stack trace:
+		executeClass(projectPath, "Inferer", 
+				"java.lang.RuntimeException\n" + 
+				"	at Inferer.foo(Inferer.gpp:11)\n" + 
+				"	at Inferer.main(Inferer.gpp:3)\n", "");
+	}
+	
+	// this one is looking at a bug
+//	public void testGpp2() throws Exception {
+//		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+//		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+//		env.addGroovyJars(projectPath);
+//		env.addGroovyPlusPlusJar(projectPath);
+//		fullBuild(projectPath);
+//
+//		// remove old package fragment root so that names don't collide
+//		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+//
+//		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+//		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+//
+//		env.addGroovyClass(root, "groovypp.util", "RefCleaner",
+//				"abstract class RefValueMap<KK,VV,WW> extends ConcurrentHashMap<KK,WW> {\n"+
+//				"}\n"
+//		);
+//		env.addGroovyClass(root, "", "Inferer",
+//				"import groovypp.util.WeakValueMap\n"+
+//				"\n"+
+//				"@Typed class CachingClassLoader {\n"+
+//				"	private final WeakValueMap<String,Class> cache = []\n"+
+//				"\n"+
+//				"   public void foo(String name) {\n"+
+//				"     def res = cache.get(name)?.get()\n"+
+//				"     cache.putIfNotYet(name, res)\n"+
+//				"}}\n"
+//		);
+//		incrementalBuild(projectPath);
+//		expectingNoProblems();
+//		expectingCompiledClassesV("CachingClassLoader","RefValueMap");
+//
+//		// Expecting a minimal stack trace:
+////		executeClass(projectPath, "Inferer", 
+////				"java.lang.RuntimeException\n" + 
+////				"	at Inferer.foo(Inferer.groovy:12)\n" + 
+////				"	at Inferer.main(Inferer.groovy:4)\n", "");
+//	}
+	
+	
+	
+	
+	
 /*
 	public void testGpp1() throws Exception {
 		IPath projectPath = env.addProject("Project"); //$NON-NLS-1$
@@ -1307,102 +1512,75 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 		expectingCompiledClassesV("Inferer");
 	}
 	
-	
-	// First groovy++ test
-	public void testGpp2() throws Exception {
-		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
-		env.addExternalJars(projectPath, Util.getJavaClassLibs());
-		env.addGroovyJars(projectPath);
-		env.addJar(projectPath,"lib/groovypp-0.4.170.jar"); //$NON-NLS-1$
-		fullBuild(projectPath);
-
-		// remove old package fragment root so that names don't collide
-		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
-
-		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
-		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
-
-		env.addGroovyClass(root, "", "Inferer",
-				"@Typed \n"+
-				"class Inferer {\n" + 
-				"  public void m(List<String> ls) {\n"+
-				"	 for (l in ls) {\n"+
-				"	   foo(l) \n"+
-				"    }\n" + 
-				"  }\n"+
-				"  public void foo(String s) {}\n" +
-				"}");
-
-		incrementalBuild(projectPath);
-		expectingNoProblems();
-		expectingCompiledClassesV("Inferer");
-	}
-
-	public void testGppExternalizable() throws Exception {
-		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
-		env.addExternalJars(projectPath, Util.getJavaClassLibs());
-		env.addGroovyJars(projectPath);
-		env.addJar(projectPath,libGroovypp); 
-		fullBuild(projectPath);
-
-		// remove old package fragment root so that names don't collide
-		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
-
-		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
-		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
-
-		// This type should be affected by the Serial transformation in gpp
-		// that adds read/write external methods
-		env.addGroovyClass(root, "", "Pairy",
-				"class Pairy<T1,T2> implements Externalizable {\n" + 
-				"  T1 first\n"+
-				"  T2 second\n"+
-				"}\n"
-				);
-
-		env.addGroovyClass(root, "", "PairyUse",
-				"class PairyUse {\n" + 
-				"  def m() {\n"+
-				"    Pairy<UUID,Object> pairy\n"+
-				"  }\n"+
-				"}\n"
-				);
-
-		incrementalBuild(projectPath);
-		expectingNoProblems();
-		expectingCompiledClassesV("Pairy","PairyUse");
-	}
-	
-	public void testGppTrait1() throws Exception {
-		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
-		env.addExternalJars(projectPath, Util.getJavaClassLibs());
-		env.addGroovyJars(projectPath);
-//		env.addJar(projectPath,libGroovypp); 
-		fullBuild(projectPath);
-
-		// remove old package fragment root so that names don't collide
-		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
-
-		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
-		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
-
-		// This type should be affected by the Serial transformation in gpp
-		// that adds read/write external methods
-		env.addGroovyClass(root, "", "Pairy",
-				"import org.mbte.groovypp.runtime.HasDefaultImplementation;\n"+
-				"\n"+
-				"public interface Delegating extends Cloneable {\n"+
-				"    public Object clone() throws CloneNotSupportedException;\n"+
-				"}\n"+
-				"abstract static class ApplyOp implements Delegating {\n"+
-				"}\n"
-				);
-
-		incrementalBuild(projectPath);
-		expectingNoProblems();
-		expectingCompiledClassesV("Delegating","Delegating$TraitImpl");
-	}
 	*/
+	
+
+//	public void testGppExternalizable() throws Exception {
+//		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+//		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+//		env.addGroovyJars(projectPath);
+//		env.addJar(projectPath,libGroovypp); 
+//		fullBuild(projectPath);
+//
+//		// remove old package fragment root so that names don't collide
+//		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+//
+//		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+//		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+//
+//		// This type should be affected by the Serial transformation in gpp
+//		// that adds read/write external methods
+//		env.addGroovyClass(root, "", "Pairy",
+//				"class Pairy<T1,T2> implements Externalizable {\n" + 
+//				"  T1 first\n"+
+//				"  T2 second\n"+
+//				"}\n"
+//				);
+//
+//		env.addGroovyClass(root, "", "PairyUse",
+//				"class PairyUse {\n" + 
+//				"  def m() {\n"+
+//				"    Pairy<UUID,Object> pairy\n"+
+//				"  }\n"+
+//				"}\n"
+//				);
+//
+//		incrementalBuild(projectPath);
+//		expectingNoProblems();
+//		expectingCompiledClassesV("Pairy","PairyUse");
+//	}
+	
+//	public void testGppTrait1() throws Exception {
+//		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+//		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+//		env.addGroovyJars(projectPath);
+////		env.addJar(projectPath,libGroovypp); 
+//		fullBuild(projectPath);
+//
+//		// remove old package fragment root so that names don't collide
+//		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+//
+//		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+//		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+//
+//		// This type should be affected by the Serial transformation in gpp
+//		// that adds read/write external methods
+//		env.addGroovyClass(root, "", "Pairy",
+//				"import org.mbte.groovypp.runtime.HasDefaultImplementation;\n"+
+//				"\n"+
+//				"public interface Delegating extends Cloneable {\n"+
+//				"    public Object clone() throws CloneNotSupportedException;\n"+
+//				"}\n"+
+//				"abstract static class ApplyOp implements Delegating {\n"+
+//				"}\n"
+//				);
+//
+//		incrementalBuild(projectPath);
+//		expectingNoProblems();
+//		expectingCompiledClassesV("Delegating","Delegating$TraitImpl");
+//	}
+
+	
 	/**
 	 * Testing that the transform occurs on an incremental change.  The key thing being looked
 	 * at here is that the incremental change is not directly to a transformed file but to
@@ -1686,7 +1864,7 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 	// }
 	// return null;
 	// }
-
+	
 	// build .groovy file hello world then run it
 	public void testBuildGroovy2() throws Exception {
 		IPath projectPath = env.addProject("Project"); //$NON-NLS-1$
@@ -1709,6 +1887,54 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 		incrementalBuild(projectPath);
 		expectingCompiledClassesV("p1.Hello");
 		expectingNoProblems();
+	}
+
+	
+	public void testLargeProjects_GRE1037() throws Exception {
+		IPath projectPath = env.addProject("Project"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		fullBuild(projectPath);
+
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+		
+		int max = AbstractImageBuilder.MAX_AT_ONCE;
+		try {
+			AbstractImageBuilder.MAX_AT_ONCE=10;
+			
+			for (int i=1;i<10;i++) {
+				env.addClass(root, "p1", "Hello"+i,
+					"package p1;\n"+
+					"class Hello"+i+" {\n"+
+					"}\n"
+					);
+			}
+			
+			env.addGroovyClass(root, "p1", "Foo",
+				"package p1;\n"+
+				"import p1.*;\n"+
+				"class Foo {\n"+
+				"  public static void main(String []argv) { print '12';}\n"+
+				"  void m() { Bar b = new Bar();}\n"+
+				"}\n"
+				);
+	
+			env.addGroovyClass(root, "p1", "Bar",
+				"package p1;\n"+
+				"class Bar {\n"+
+				"}\n"
+				);
+	
+			incrementalBuild(projectPath);
+			// see console for all the exceptions...
+			// no class for p1.Foo when problem occurs:
+			executeClass(projectPath, "p1.Foo", "12", "");
+		} finally {
+			AbstractImageBuilder.MAX_AT_ONCE=max;
+		}
 	}
 
 	public void testIncrementalCompilationTheBasics() throws Exception {
@@ -2513,7 +2739,7 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 	}
 	
 	// currently failing
-	public void _testNoDoubleResolve() throws Exception {
+	public void testNoDoubleResolve() throws Exception {
 	    IPath projectPath = env.addProject("Project");
         env.addExternalJars(projectPath, Util.getJavaClassLibs());
         env.addGroovyJars(projectPath);
@@ -2529,10 +2755,51 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
         GroovyCompilationUnit unit = (GroovyCompilationUnit) env.getJavaProject("Project").findType("p.Groov").getCompilationUnit();
         unit.becomeWorkingCopy(null);
         JDTResolver resolver = unit.getResolver();
+        assertNotNull(resolver);
         resolver.currentClass = unit.getModuleNode().getScriptClassDummy();
         ClassNode url = resolver.resolve("java.net.URL");
         assertNotNull("Should have found the java.net.URL ClassNode", url);
         assertEquals("Wrong classnode found", "java.net.URL", url.getName());
+    }
+	
+	// GRECLIPSE-1170
+	public void testFieldInitializerFromOtherFile() throws Exception {
+        IPath projectPath = env.addProject("Project");
+        env.addExternalJars(projectPath, Util.getJavaClassLibs());
+        env.addGroovyJars(projectPath);
+        env.addGroovyNature("Project");
+        // remove old package fragment root so that names don't collide
+        env.removePackageFragmentRoot(projectPath, "");
+        env.addPackageFragmentRoot(projectPath, "src");
+        env.setOutputFolder(projectPath, "bin");
+        env.addGroovyClass(projectPath.append("src"), "p", "Other", "package p\nclass Other {\ndef x = 9 }");
+        env.addGroovyClass(projectPath.append("src"), "p", "Target", "package p\nnew Other()");
+        GroovyCompilationUnit unit = (GroovyCompilationUnit) env.getJavaProject("Project").findType("p.Target").getCompilationUnit();
+        
+        // now find the class reference
+        ClassNode type = ((ConstructorCallExpression) ((ReturnStatement) unit
+                .getModuleNode().getStatementBlock().getStatements().get(0))
+                .getExpression()).getType();
+        
+        // now check that the field initializer exists
+        Expression initialExpression = type.getField("x").getInitialExpression();
+        assertNotNull(initialExpression);
+        assertEquals("Should have been an int", VariableScope.INTEGER_CLASS_NODE, ClassHelper.getWrapper(initialExpression.getType()));
+        assertEquals("Should have been the number 9", "9", initialExpression.getText());
+        
+        // now check to ensure that there are no duplicate fields or properties
+        int declCount = 0;
+        for (FieldNode field : type.getFields()) {
+            if (field.getName().equals("x")) declCount++;
+        }
+        assertEquals("Should have found 'x' field exactly one time", 1, declCount);
+        
+        declCount = 0;
+        for (PropertyNode prop : type.getProperties()) {
+            if (prop.getName().equals("x")) declCount++;
+        }
+        assertEquals("Should have found 'x' property exactly one time", 1, declCount);
+        
     }
 
 	//

@@ -17,6 +17,7 @@
 package org.eclipse.jdt.core.groovy.tests.search;
 
 import org.codehaus.groovy.ast.ASTNode;
+import org.codehaus.groovy.ast.AnnotatedNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.GenericsType;
@@ -30,6 +31,8 @@ import org.eclipse.jdt.groovy.search.ITypeRequestor;
 import org.eclipse.jdt.groovy.search.TypeInferencingVisitorWithRequestor;
 import org.eclipse.jdt.groovy.search.TypeLookupResult;
 import org.eclipse.jdt.groovy.search.TypeLookupResult.TypeConfidence;
+import org.eclipse.jdt.groovy.search.VariableScope;
+import org.objectweb.asm.Opcodes;
 
 /**
  * @author Andrew Eisenberg
@@ -56,6 +59,11 @@ public abstract class AbstractInferencingTest extends AbstractGroovySearchTest {
 
     protected void assertType(String contents, int exprStart, int exprEnd,
             String expectedType, boolean forceWorkingCopy) {
+        assertType(contents, exprStart, exprEnd, expectedType, null, forceWorkingCopy);
+    }
+    
+    protected void assertType(String contents, int exprStart, int exprEnd,
+            String expectedType, String extraDocSnippet, boolean forceWorkingCopy) {
         GroovyCompilationUnit unit = createUnit("Search", contents);
         SearchRequestor requestor = doVisit(exprStart, exprEnd, unit, forceWorkingCopy);
         
@@ -68,8 +76,56 @@ public abstract class AbstractInferencingTest extends AbstractGroovySearchTest {
             sb.append("Declaring type: " + printTypeName(requestor.result.declaringType) + "\n");
             sb.append("ASTNode: " + requestor.node + "\n");
             fail(sb.toString());
-            
         }
+        
+        if (extraDocSnippet != null && ! requestor.result.extraDoc.contains(extraDocSnippet)) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Incorrect Doc found.\n");
+            sb.append("Expected doc should contain: " + extraDocSnippet + "\n");
+            sb.append("Found: " + requestor.result.extraDoc + "\n");
+            sb.append("ASTNode: " + requestor.node + "\n");
+            fail(sb.toString());
+        }
+        
+        // this is from https://issuetracker.springsource.com/browse/STS-1854
+        // make sure that the Type parameterization of Object has not been messed up
+        assertNull("Problem!!! Object type has type parameters now.  See STS-1854", VariableScope.OBJECT_CLASS_NODE.getGenericsTypes());
+    }
+    
+    /**
+     * Asserts that the declaration returned at the selection is deprecated
+     * Checks only for the deprecated flag, (and so will only succeed for deprecated 
+     * DSLDs).  Could change this in the future
+     * 
+     * @param contents
+     * @param exprStart
+     * @param exprEnd
+     */
+    protected void assertDeprecated(String contents, int exprStart, int exprEnd) {
+        GroovyCompilationUnit unit = createUnit("Search", contents);
+        SearchRequestor requestor = doVisit(exprStart, exprEnd, unit, false);
+        assertNotNull("Did not find expected ASTNode", requestor.node);
+        assertTrue("Declaration should be deprecated: " + requestor.result.declaration, hasDeprecatedFlag((AnnotatedNode) requestor.result.declaration));
+    }
+
+    
+    private boolean hasDeprecatedFlag(AnnotatedNode declaration) {
+        int flags;
+
+        if (declaration instanceof PropertyNode) {
+        	declaration = ((PropertyNode) declaration).getField();
+        }
+        if (declaration instanceof ClassNode) {
+            flags = ((ClassNode) declaration).getModifiers();
+        } else if (declaration instanceof MethodNode) {
+            flags = ((MethodNode) declaration).getModifiers();
+        } else if (declaration instanceof FieldNode) {
+            flags = ((FieldNode) declaration).getModifiers();
+        } else {
+            flags = 0;
+        }
+
+        return (flags & Opcodes.ACC_DEPRECATED) != 0;
     }
     
     protected SearchRequestor doVisit(int exprStart, int exprEnd, GroovyCompilationUnit unit, boolean forceWorkingCopy) {
@@ -239,7 +295,7 @@ public abstract class AbstractInferencingTest extends AbstractGroovySearchTest {
         }
         
         public String getDeclaringTypeName() {
-            return result.declaringType.getName();
+            return printTypeName(result.declaringType);
         }
         
         public String getTypeName() {

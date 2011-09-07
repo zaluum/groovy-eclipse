@@ -16,12 +16,11 @@ import java.util.Collections;
 import org.codehaus.groovy.ast.AnnotatedNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.ModuleNode;
-import org.codehaus.groovy.eclipse.GroovyLogManager;
-import org.codehaus.groovy.eclipse.TraceCategory;
 import org.codehaus.groovy.eclipse.dsl.pointcuts.AbstractPointcut;
 import org.codehaus.groovy.eclipse.dsl.pointcuts.GroovyDSLDContext;
 import org.codehaus.groovy.eclipse.dsl.pointcuts.PointcutVerificationException;
 import org.codehaus.jdt.groovy.internal.compiler.ast.JDTClassNode;
+import org.eclipse.core.resources.IStorage;
 import org.eclipse.jdt.core.compiler.CharOperation;
 
 /**
@@ -35,7 +34,7 @@ import org.eclipse.jdt.core.compiler.CharOperation;
  */
 public class SourceFolderOfTypePointcut extends AbstractPointcut {
 
-    public SourceFolderOfTypePointcut(String containerIdentifier, String pointcutName) {
+    public SourceFolderOfTypePointcut(IStorage containerIdentifier, String pointcutName) {
         super(containerIdentifier, pointcutName);
     }
 
@@ -88,9 +87,6 @@ public class SourceFolderOfTypePointcut extends AbstractPointcut {
         }
         
         // will be "" for primitive and other core types loaded by ClassHelper.
-        if (GroovyLogManager.manager.hasLoggers()) {
-            GroovyLogManager.manager.log(TraceCategory.DSL, "Cannot find file for type " + type.getName());
-        }
         return "";
     }
 
