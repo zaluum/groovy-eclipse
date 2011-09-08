@@ -1,19 +1,13 @@
-/*
- * Copyright 2003-2009 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
+/*******************************************************************************
+ * Copyright (c) 2009-2011 SpringSource and others.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ * 
+ * Contributors:
+ *     SpringSource - initial API and implementation
+ *******************************************************************************/
 package org.eclipse.jdt.groovy.search;
 
 import java.io.DataInputStream;
@@ -43,6 +37,7 @@ import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.DefaultGroovyStaticMethods;
 import org.codehaus.jdt.groovy.internal.compiler.ast.LazyGenericsType;
+import org.eclipse.core.runtime.Assert;
 import org.eclipse.jdt.core.Signature;
 import org.eclipse.jdt.internal.core.util.Util;
 
@@ -165,6 +160,12 @@ public class VariableScope {
 	 * FIXADE consider moving this to the shared state
 	 */
 	private Stack<ASTNode> nodeStack;
+
+	/**
+	 * If visiting the identifier of a method call expression, this field will be equal to the number of arguments to the method
+	 * call.
+	 */
+	int methodCallNumberOfArguments = -1;
 
 	public VariableScope(VariableScope parent, ASTNode enclosingNode, boolean isStatic) {
 		this.parent = parent;
@@ -456,6 +457,8 @@ public class VariableScope {
 			// if this parameter exists in the redirect, then it is the former, if not, then check the redirect for type
 			// parameters
 			if (typeParameterExistsInRedirected(typeToParameterize, toParameterizeName)) {
+				Assert.isLegal(typeToParameterize.redirect() != typeToParameterize,
+						"Error: trying to resolve type parameters of a type declaration: " + typeToParameterize);
 				// we have: Iterator<E> --> Iterator<String>
 				typeToParameterize.getGenericsTypes()[i].setType(resolved);
 				genericsToParameterize.setName(genericsToParameterize.getType().getName());
@@ -519,6 +522,29 @@ public class VariableScope {
 	 */
 	public static ClassNode clone(ClassNode type) {
 		return cloneInternal(type, 0);
+	}
+
+	public static ClassNode clonedMap() {
+		ClassNode clone = clone(MAP_CLASS_NODE);
+		cleanGenerics(clone.getGenericsTypes()[0]);
+		cleanGenerics(clone.getGenericsTypes()[1]);
+		return clone;
+	}
+
+	public static ClassNode clonedList() {
+		ClassNode clone = clone(LIST_CLASS_NODE);
+		cleanGenerics(clone.getGenericsTypes()[0]);
+		return clone;
+	}
+
+	private static void cleanGenerics(GenericsType gt) {
+		gt.getType().setGenericsTypes(null);
+		gt.setName("java.lang.Object");
+		gt.setPlaceholder(false);
+		gt.setWildcard(false);
+		gt.setResolved(true);
+		gt.setUpperBounds(null);
+		gt.setLowerBound(null);
 	}
 
 	/**

@@ -206,15 +206,18 @@ public class CodeSelectRequestor implements ITypeRequestor {
             if (maybeRequested == null) {
                 // try something else because source location not set right
                 String name = null;
+                int preferredParamNumber = -1;
                 if (result.declaration instanceof MethodNode) {
                     name = ((MethodNode) result.declaration).getName();
+                    Parameter[] parameters = ((MethodNode) result.declaration).getParameters();
+                    preferredParamNumber = parameters == null ? 0 : parameters.length;
                 } else if (result.declaration instanceof PropertyNode) {
                     name = ((PropertyNode) result.declaration).getName();
                 } else if (result.declaration instanceof FieldNode) {
                     name = ((FieldNode) result.declaration).getName();
                 }
                 if (name != null) {
-                    maybeRequested = findElement(type, name);
+                    maybeRequested = findElement(type, name, preferredParamNumber);
                 }
                 if (maybeRequested == null) {
                     // still couldn't find anything
@@ -391,11 +394,15 @@ public class CodeSelectRequestor implements ITypeRequestor {
         StringBuilder sb = new StringBuilder();
         sb.append(createUniqueKeyForClass(node.getDeclaringClass(), resolvedDeclaringType));
         sb.append('.').append(actualField.getElementName()).append(')');
-        sb.append(createUniqueKeyForResolvedClass(resolvedType));
+        ClassNode typeOfField = node.getName().startsWith("set")  && node.getParameters() != null && node.getParameters().length > 0 ? node.getParameters()[0].getType(): resolvedType;
+        sb.append(createUniqueKeyForResolvedClass(typeOfField));
         return sb;
     }
     
     private StringBuilder createUniqueKeyForResolvedClass(ClassNode resolvedType) {
+        if (resolvedType.getName().equals("java.lang.Void")) {
+            resolvedType = VariableScope.VOID_CLASS_NODE;
+        }
         return new StringBuilder(Signature.createTypeSignature(createGenericsAwareName(resolvedType, false/*fully qualified*/), true/*must resolve*/).replace('.', '/'));
     }
     /**
@@ -405,7 +412,6 @@ public class CodeSelectRequestor implements ITypeRequestor {
      * @return
      */
     private StringBuilder createUniqueKeyForClass(ClassNode unresolvedType, ClassNode resolvedDeclaringType) {
-        
     	GenericsMapper mapper = GenericsMapper.gatherGenerics(resolvedDeclaringType, resolvedDeclaringType.redirect());
     	ClassNode resolvedType = VariableScope.resolveTypeParameterization(mapper, VariableScope.clone(unresolvedType));
     	return createUniqueKeyForResolvedClass(resolvedType);
@@ -428,10 +434,11 @@ public class CodeSelectRequestor implements ITypeRequestor {
      * May return null
      * @param type
      * @param text
+     * @param preferredParamNumber TODO
      * @return
      * @throws JavaModelException 
      */
-    private IJavaElement findElement(IType type, String text) throws JavaModelException {
+    private IJavaElement findElement(IType type, String text, int preferredParamNumber) throws JavaModelException {
         if (text.equals(type.getElementName())) {
             return type;
         }
@@ -443,10 +450,19 @@ public class CodeSelectRequestor implements ITypeRequestor {
         String getMethod = "get" + capitalized;
         
         
+        IMethod lastFound = null;
         for (IMethod method : type.getMethods()) {
             if (method.getElementName().equals(text)) {
-                return method;
+                // prefer methods with the appropriate number of parameters
+                if (method.getParameterTypes().length == preferredParamNumber) {
+                    return method;
+                } else {
+                    lastFound = method;
+                }
             }
+        }
+        if (lastFound != null) {
+            return lastFound;
         }
         
         IField field = type.getField(text);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2010 IBM Corporation and others.
+ * Copyright (c) 2000, 2011 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -90,24 +90,25 @@ void buildTypeBindings(AccessRestriction accessRestriction) {
 					|| this.referenceContext.types != null
 					|| this.referenceContext.imports != null) {
 				// GROOVY start:
-				// old code:
-//				problemReporter().packageIsNotExpectedPackage(referenceContext);
-				// new code:
-				reportPackageIsNotExpectedPackage(referenceContext);
+				/* old code: {
+				problemReporter().packageIsNotExpectedPackage(this.referenceContext);
+				}*/// new code:
+				reportPackageIsNotExpectedPackage(this.referenceContext);
 				// GROOVY end
 			}
 			this.currentPackageName = expectedPackageName.length == 0 ? CharOperation.NO_CHAR_CHAR : expectedPackageName;
 		}
 	}
 	if (this.currentPackageName == CharOperation.NO_CHAR_CHAR) {
-		if ((this.fPackage = this.environment.defaultPackage) == null) {
-			problemReporter().mustSpecifyPackage(this.referenceContext);
-			return;
-		}
+		// environment default package is never null
+		this.fPackage = this.environment.defaultPackage;
 	} else {
 		if ((this.fPackage = this.environment.createPackage(this.currentPackageName)) == null) {
-			if (this.referenceContext.currentPackage != null)
+			if (this.referenceContext.currentPackage != null) {
 				problemReporter().packageCollidesWithType(this.referenceContext); // only report when the unit has a package statement
+			}
+			// ensure fPackage is not null
+			this.fPackage = this.environment.defaultPackage;
 			return;
 		} else if (this.referenceContext.isPackageInfo()) {
 			// resolve package annotations now if this is "package-info.java".
@@ -185,9 +186,9 @@ void buildTypeBindings(AccessRestriction accessRestriction) {
 protected void checkPublicTypeNameMatchesFilename(TypeDeclaration typeDecl) {
 	if ((typeDecl.modifiers & ClassFileConstants.AccPublic) != 0) {
 		char[] mainTypeName;
-		if ((mainTypeName = referenceContext.getMainTypeName()) != null // mainTypeName == null means that implementor of ICompilationUnit decided to return null
+		if ((mainTypeName = this.referenceContext.getMainTypeName()) != null // mainTypeName == null means that implementor of ICompilationUnit decided to return null
 				&& !CharOperation.equals(mainTypeName, typeDecl.name)) {
-			problemReporter().publicClassMustMatchFileName(referenceContext, typeDecl);
+			problemReporter().publicClassMustMatchFileName(this.referenceContext, typeDecl);
 			// tolerate faulty main type name (91091), allow to proceed into type construction
 		}
 	}
@@ -617,7 +618,7 @@ private Binding findImport(char[][] compoundName, int length) {
 
 	ReferenceBinding type;
 	if (binding == null) {
-		if (this.environment.defaultPackage == null || compilerOptions().complianceLevel >= ClassFileConstants.JDK1_4)
+		if (compilerOptions().complianceLevel >= ClassFileConstants.JDK1_4)
 			return new ProblemReferenceBinding(CharOperation.subarray(compoundName, 0, i), null, ProblemReasons.NotFound);
 		type = findType(compoundName[0], this.environment.defaultPackage, this.environment.defaultPackage);
 		if (type == null || !type.isValidBinding())
@@ -642,15 +643,15 @@ private Binding findImport(char[][] compoundName, int length) {
 	// original
     if (!type.canBeSeenBy(this.fPackage))
 	// new */
-	if (!canBeSeenBy(type,fPackage))
+	if (!canBeSeenBy(type,this.fPackage))
 	// GROOVY end
 		return new ProblemReferenceBinding(compoundName, type, ProblemReasons.NotVisible);
 	return type;
 }
 
 // GROOVY start: new method for determining visibility - rules are relaxed for groovy
-protected boolean canBeSeenBy(ReferenceBinding type, PackageBinding fPackage) {
-	return type.canBeSeenBy(fPackage);
+protected boolean canBeSeenBy(ReferenceBinding type, PackageBinding pkg) {
+	return type.canBeSeenBy(pkg);
 }
 // GROOVY end
 // GROOVY start: made protected
@@ -660,7 +661,7 @@ Binding findSingleImport(char[][] compoundName, int mask, boolean findStaticImpo
 	if (compoundName.length == 1) {
 		// findType records the reference
 		// the name cannot be a package
-		if (this.environment.defaultPackage == null || compilerOptions().complianceLevel >= ClassFileConstants.JDK1_4)
+		if (compilerOptions().complianceLevel >= ClassFileConstants.JDK1_4)
 			return new ProblemReferenceBinding(compoundName, null, ProblemReasons.NotFound);
 		ReferenceBinding typeBinding = findType(compoundName[0], this.environment.defaultPackage, this.fPackage);
 		if (typeBinding == null)

@@ -32,6 +32,8 @@ import org.eclipse.core.runtime.Path;
  */
 public class DSLPreferences {
 
+	public static final String AUTO_ADD_DSL_SUPPORT = "org.codehaus.groovy.eclipse.dsl.auto.add.support";
+	
     /**
      * Preference key for all the scripts that are disabled in this workspace.  The value is
      * a comma separated list of {@link IResource#getFullPath()} of DSLD files.  Default value is 
@@ -88,14 +90,16 @@ public class DSLPreferences {
     }
 
     private static String[] filter(String[] disabled) {
-        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
-        List<String> filtered = new ArrayList<String>(disabled.length);
-        for (String string : disabled) {
-            IResource r = root.getFile(new Path(string));
-            if (r.getType() == IResource.FILE && r.isAccessible()) {
-                filtered.add(string);
-            }
-        }
-        return filtered.toArray(new String[filtered.size()]);
+        // not working now
+//        IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+//        List<String> filtered = new ArrayList<String>(disabled.length);
+//        for (String string : disabled) {
+//            IResource r = root.getFile(new Path(string));
+//            if (r.getType() == IResource.FILE && r.isAccessible()) {
+//                filtered.add(string);
+//            }
+//        }
+//        return filtered.toArray(new String[filtered.size()]);
+        return disabled;
     }
 }

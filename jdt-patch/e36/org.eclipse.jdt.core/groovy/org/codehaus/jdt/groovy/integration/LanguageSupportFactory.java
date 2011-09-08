@@ -16,6 +16,7 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.WorkingCopyOwner;
+import org.eclipse.jdt.core.search.IJavaSearchScope;
 import org.eclipse.jdt.core.search.SearchPattern;
 import org.eclipse.jdt.core.search.SearchRequestor;
 import org.eclipse.jdt.internal.compiler.CompilationResult;
@@ -170,6 +171,10 @@ public class LanguageSupportFactory {
 
 	public static EventHandler getEventHandler() {
 		return getLanguageSupport().getEventHandler();
+	}
+
+	public static IJavaSearchScope expandSearchScope(IJavaSearchScope scope, SearchPattern pattern, SearchRequestor requestor) {
+		return getLanguageSupport().expandSearchScope(scope, pattern, requestor);
 	}
 
 }
