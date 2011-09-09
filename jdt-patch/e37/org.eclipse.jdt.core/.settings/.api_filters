@@ -10,6 +10,13 @@
         </filter>
     </resource>
     <resource path="groovy/org/codehaus/jdt/groovy/integration/LanguageSupport.java" type="org.codehaus.jdt.groovy.integration.LanguageSupport">
+        <filter id="643842064">
+            <message_arguments>
+                <message_argument value="Parser"/>
+                <message_argument value="LanguageSupport"/>
+                <message_argument value="getParser(Object, CompilerOptions, ProblemReporter, boolean, int)"/>
+            </message_arguments>
+        </filter>
         <filter id="643846161">
             <message_arguments>
                 <message_argument value="ProblemReporter"/>
