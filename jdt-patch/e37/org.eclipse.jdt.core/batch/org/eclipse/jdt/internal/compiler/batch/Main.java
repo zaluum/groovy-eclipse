@@ -49,6 +49,7 @@ import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.StringTokenizer;
 
+import org.codehaus.jdt.groovy.integration.LanguageSupportFactory;
 import org.eclipse.jdt.core.compiler.CategorizedProblem;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.compiler.CompilationProgress;
@@ -1870,13 +1871,14 @@ public void configure(String[] argv) {
 
 				// FIXASC groovy promote that suffix to a constant elsewhere - respect registered java like languages? (does that work for batch environment)
 				/* GROOVY change start: allow .groovy files through as source
+				 * ZALUUM
 				// old code:
 				if (currentArg.endsWith(SuffixConstants.SUFFIX_STRING_java)) {
 				// new code: */
 				if (currentArg.endsWith(SuffixConstants.SUFFIX_STRING_java) 
-					|| currentArg.endsWith(".groovy")) {				 //$NON-NLS-1$
+					|| LanguageSupportFactory.isInterestingSourceFile(currentArg)) {				
 				
-					if (currentArg.endsWith(".groovy")) { //$NON-NLS-1$
+					if (LanguageSupportFactory.isInterestingSourceFile(currentArg)) {
 						encounteredGroovySourceFile = true;
 					}
 
@@ -2943,6 +2945,10 @@ public CompilationUnit[] getCompilationUnits() {
 		if (!file.exists())
 			throw new IllegalArgumentException(this.bind("unit.missing", this.filenames[i])); //$NON-NLS-1$
 		String encoding = this.encodings[i];
+		//ZALUUM
+		if (LanguageSupportFactory.isInterestingSourceFile(this.filenames[i])) 
+			encoding = "ISO-8859-1";  //$NON-NLS-1$
+		//ZALUUM end
 		if (encoding == null)
 			encoding = defaultEncoding;
 		units[i] = new CompilationUnit(null, this.filenames[i], encoding,

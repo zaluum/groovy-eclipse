@@ -14,6 +14,7 @@ package org.codehaus.jdt.groovy.integration;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.WorkingCopyOwner;
 import org.eclipse.jdt.core.search.IJavaSearchScope;
 import org.eclipse.jdt.core.search.SearchPattern;
@@ -36,6 +37,7 @@ import org.eclipse.jdt.internal.core.search.matching.MatchLocator;
 import org.eclipse.jdt.internal.core.search.matching.MatchLocatorParser;
 import org.eclipse.jdt.internal.core.search.matching.PossibleMatch;
 import org.eclipse.jdt.internal.core.util.Util;
+import org.eclipse.text.edits.TextEdit;
 import org.osgi.framework.Bundle;
 
 public class LanguageSupportFactory {
@@ -107,11 +109,20 @@ public class LanguageSupportFactory {
 		getLanguageSupport().filterNonSourceMembers(binaryType);
 	}
 	
-	
+	// ZALUUM
+	public static TextEdit updateContent(org.eclipse.jdt.core.ICompilationUnit cu, String[] destPackageName,
+			String[] currPackageName, String newName) throws JavaModelException {
+		return getLanguageSupport().updateContent(cu, destPackageName, currPackageName, newName);
+	}
+	// END ZALUUM
+
 	//FIXASC static state issues?
 	private static LanguageSupport getLanguageSupport() {
 		if (languageSupport==null) {
-			languageSupport = /*new GroovyLanguageSupport();*/tryInstantiate("org.codehaus.jdt.groovy.integration.internal.GroovyLanguageSupport"); //$NON-NLS-1$
+			// ZALUUM 
+			//old languageSupport = /*new GroovyLanguageSupport();*/tryInstantiate("org.codehaus.jdt.groovy.integration.internal.GroovyLanguageSupport"); //$NON-NLS-1$
+			languageSupport = /*new GroovyLanguageSupport();*/tryInstantiate("org.zaluum.nide.eclipse.integration.ZaluumLanguageSupport"); //$NON-NLS-1$
+		    // END ZALUUM
 			if (languageSupport==null) {
 				languageSupport = new DefaultLanguageSupport();
 			}

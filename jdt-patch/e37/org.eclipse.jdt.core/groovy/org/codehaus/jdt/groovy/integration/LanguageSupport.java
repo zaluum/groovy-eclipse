@@ -33,6 +33,7 @@ import org.eclipse.jdt.internal.core.search.matching.ImportMatchLocatorParser;
 import org.eclipse.jdt.internal.core.search.matching.MatchLocator;
 import org.eclipse.jdt.internal.core.search.matching.MatchLocatorParser;
 import org.eclipse.jdt.internal.core.search.matching.PossibleMatch;
+import org.eclipse.text.edits.TextEdit;
 
 public interface LanguageSupport {
 
@@ -114,5 +115,8 @@ public interface LanguageSupport {
 	 * @return an expanded scope if required, or the initial scope if there is no change
 	 */
 	IJavaSearchScope expandSearchScope(IJavaSearchScope scope, SearchPattern pattern, SearchRequestor requestor);
-
+	// ZALUUM
+	TextEdit updateContent(org.eclipse.jdt.core.ICompilationUnit cu, String[] destPackageName, String[] currPackageName, String newName);
+	// END ZALUUM
+		
 }

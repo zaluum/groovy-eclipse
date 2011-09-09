@@ -449,7 +449,7 @@ public class Compiler implements ITypeRequestor, ProblemSeverities {
 						int newGroovyFileIndex = -1;
 						for (int g=groovyFileIndex;g<=u;g++) {
 							char[] fn2 = sourceUnits[g].getFileName();
-							boolean isDotGroovy = fn2[fn2.length-1]=='y';
+							boolean isDotGroovy = fn2[fn2.length-1]=='m'; // ZALUUM
 							if (isDotGroovy) {
 								newGroovyFileIndex = g;
 								break;

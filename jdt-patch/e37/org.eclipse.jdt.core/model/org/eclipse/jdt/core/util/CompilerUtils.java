@@ -169,7 +169,10 @@ public class CompilerUtils {
 	 * @return true if the project has the groovy nature
 	 */
 	private static boolean isGroovyNaturedProject(IProject project) throws CoreException {
-		return project.hasNature("org.eclipse.jdt.groovy.core.groovyNature"); //$NON-NLS-1$
+		// ZALUUM 
+		// old return project.hasNature("org.eclipse.jdt.groovy.core.groovyNature"); //$NON-NLS-1$
+		return project.hasNature("org.zaluum.nide.zaluumNature"); //$NON-NLS-1$
+		// END ZALUUM
 	}
 	
 	private static String pathToString(IPath path, IProject project) {

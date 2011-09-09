@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <component id="org.eclipse.jdt.core" version="2">
+    <resource path="dom/org/eclipse/jdt/core/dom/ASTParser.java" type="org.eclipse.jdt.core.dom.ASTParser">
+        <filter id="643842064">
+            <message_arguments>
+                <message_argument value="ICompilationUnit"/>
+                <message_argument value="ASTParser"/>
+                <message_argument value="createBasicCompilationUnit(ICompilationUnit)"/>
+            </message_arguments>
+        </filter>
+    </resource>
     <resource path="groovy/org/codehaus/jdt/groovy/integration/LanguageSupport.java" type="org.codehaus.jdt.groovy.integration.LanguageSupport">
         <filter id="643846161">
             <message_arguments>

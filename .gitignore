@@ -6,3 +6,8 @@ jdt-patch/e36/org.eclipse.jdt.core/ecj-temp-folder/
 jdt-patch/e36/org.eclipse.jdt.core/antbin/
 jdt-patch/e36/org.eclipse.jdt.core/bin/
 bin/
+jdt-patch/e37/org.eclipse.jdt.core/target/
+jdt-patch/e37/org.eclipse.jdt.core/ecj-temp-folder/
+jdt-patch/e37/org.eclipse.jdt.core/antbin/
+jdt-patch/e37/org.eclipse.jdt.core/bin/
+

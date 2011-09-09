@@ -1668,7 +1668,15 @@ protected void process(PossibleMatch possibleMatch, boolean bindingsWereCreated)
 		} catch (Throwable t) {
 			t.printStackTrace();
 		}
-		possibleMatch.parsedUnit.resolve();
+		// ZALUUM
+		// old possibleMatch.parsedUnit.resolve();
+		try {
+			possibleMatch.parsedUnit.resolve();
+		} catch (Throwable t) {
+			System.err.println("BUG MatchLocator.java usually buildTypeBindings detects a duplicate type" //$NON-NLS-1$
+					+ t.toString());
+		}
+		// END ZALUUM
 		return;
 	}
 	// GROOVY End
