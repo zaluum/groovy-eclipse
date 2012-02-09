@@ -10,10 +10,14 @@
  *******************************************************************************/
 package org.codehaus.groovy.eclipse.dsl.contributions;
 
+import java.util.List;
+
 import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.PropertyNode;
+import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.eclipse.codeassist.ProposalUtils;
 import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyPropertyProposal;
 import org.codehaus.groovy.eclipse.codeassist.proposals.IGroovyProposal;
 import org.codehaus.groovy.eclipse.dsl.lookup.ResolverCache;
@@ -39,20 +43,28 @@ public class PropertyContributionElement implements IContributionElement {
     
     private final String provider;
     private final String doc;
+
+    private final int relevanceMultiplier;
+
+    private final boolean isDeprecated;
     
-    public PropertyContributionElement(String propName, String propType, String declaringType, boolean isStatic, String provider, String doc) {
+    public PropertyContributionElement(String propName, String propType, String declaringType, boolean isStatic, String provider, String doc, boolean isDeprecated, int relevanceMultiplier) {
         super();
         this.propName = propName;
         this.propType = propType;
         this.isStatic = isStatic;
         this.declaringType = declaringType;
+        this.isDeprecated = isDeprecated;
+        this.relevanceMultiplier = relevanceMultiplier;
         
         this.provider = provider == null ? GROOVY_DSL_PROVIDER : provider;
         this.doc = doc == null ? NO_DOC + this.provider : doc;
     }
 
     public IGroovyProposal toProposal(ClassNode declaringType, ResolverCache resolver) {
-        return new GroovyPropertyProposal(toProperty(declaringType, resolver), provider);
+        GroovyPropertyProposal groovyPropertyProposal = new GroovyPropertyProposal(toProperty(declaringType, resolver), provider);
+        groovyPropertyProposal.setRelevanceMultiplier(relevanceMultiplier);
+        return groovyPropertyProposal;
     }
 
     public TypeAndDeclaration lookupType(String name, ClassNode declaringType, ResolverCache resolver) {
@@ -70,7 +82,9 @@ public class PropertyContributionElement implements IContributionElement {
     }
 
     protected int opcode() {
-        return isStatic ? Opcodes.ACC_STATIC : Opcodes.ACC_PUBLIC;
+        int modifiers = isStatic ? Opcodes.ACC_STATIC : Opcodes.ACC_PUBLIC;
+        modifiers |= isDeprecated ? Opcodes.ACC_DEPRECATED : 0;
+        return modifiers;
     }
 
     protected ClassNode ensureReturnType(ResolverCache resolver) {
@@ -98,4 +112,15 @@ public class PropertyContributionElement implements IContributionElement {
     public String getDeclaringTypeName() {
         return declaringType;
     }
+    
+    @Override
+    public String toString() {
+        return "public " + (isStatic ? "static " : "") + (isDeprecated ? "deprecated " : "")
+                + propType + " " + declaringType + "." + propName + " (" + provider + ")";
+    }
+
+    public List<IGroovyProposal> extraProposals(ClassNode declaringType, ResolverCache resolver, Expression enclosingExpression) {
+        return ProposalUtils.NO_PROPOSALS;
+    }
+
 }

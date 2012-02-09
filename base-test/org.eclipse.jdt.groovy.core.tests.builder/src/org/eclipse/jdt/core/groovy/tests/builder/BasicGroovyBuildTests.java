@@ -16,7 +16,16 @@ import java.util.StringTokenizer;
 
 import junit.framework.Test;
 
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.FieldNode;
+import org.codehaus.groovy.ast.PropertyNode;
+import org.codehaus.groovy.ast.expr.ConstructorCallExpression;
+import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.FieldExpression;
+import org.codehaus.groovy.ast.expr.PropertyExpression;
+import org.codehaus.groovy.ast.stmt.ExpressionStatement;
+import org.codehaus.groovy.ast.stmt.ReturnStatement;
 import org.codehaus.jdt.groovy.internal.compiler.ast.JDTResolver;
 import org.codehaus.jdt.groovy.model.GroovyCompilationUnit;
 import org.eclipse.core.resources.IFile;
@@ -28,6 +37,7 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.tests.builder.Problem;
 import org.eclipse.jdt.core.tests.util.Util;
 import org.eclipse.jdt.core.util.CompilerUtils;
+import org.eclipse.jdt.groovy.search.VariableScope;
 import org.eclipse.jdt.internal.core.builder.AbstractImageBuilder;
 
 /**
@@ -1310,6 +1320,46 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
 				"java.lang.RuntimeException\n" + 
 				"	at Inferer.foo(Inferer.groovy:12)\n" + 
 				"	at Inferer.main(Inferer.groovy:4)\n", "");
+	}
+	
+	public void testGpp1AnnotatedPackage() throws Exception {
+		IPath projectPath = env.addProject("Project", "1.5"); //$NON-NLS-1$
+		env.addExternalJars(projectPath, Util.getJavaClassLibs());
+		env.addGroovyJars(projectPath);
+		env.addGroovyPlusPlusJar(projectPath);
+		fullBuild(projectPath);
+
+		// remove old package fragment root so that names don't collide
+		env.removePackageFragmentRoot(projectPath, ""); //$NON-NLS-1$
+
+		IPath root = env.addPackageFragmentRoot(projectPath, "src"); //$NON-NLS-1$
+		env.setOutputFolder(projectPath, "bin"); //$NON-NLS-1$
+
+		env.addGroovyClass(root, "p", "Inferer",
+				"@Typed package p\n"+
+				"class Inferer {\n" + 
+				"  public static void main(String []argv) {\n"+
+				"    new Inferer().foo('abc')\n"+
+				"  }\n"+
+				"  public void m(List<String> ls) {\n"+
+				"	 for (l in ls) {\n"+
+				"	   foo(l) \n"+
+				"    }\n" + 
+				"  }\n"+
+				"  public void foo(String s) {\n"+
+				"    new RuntimeException().printStackTrace(System.out)\n"+
+				"  }\n" +
+				"}");
+
+		incrementalBuild(projectPath);
+		expectingNoProblems();
+		expectingCompiledClassesV("p.Inferer");
+
+		// Expecting a minimal stack trace:
+		executeClass(projectPath, "p.Inferer", 
+				"java.lang.RuntimeException\n" + 
+				"	at p.Inferer.foo(Inferer.groovy:12)\n" + 
+				"	at p.Inferer.main(Inferer.groovy:4)\n", "");
 	}
 	
 	/**
@@ -2750,6 +2800,46 @@ public class BasicGroovyBuildTests extends GroovierBuilderTests {
         ClassNode url = resolver.resolve("java.net.URL");
         assertNotNull("Should have found the java.net.URL ClassNode", url);
         assertEquals("Wrong classnode found", "java.net.URL", url.getName());
+    }
+	
+	// GRECLIPSE-1170
+	public void testFieldInitializerFromOtherFile() throws Exception {
+        IPath projectPath = env.addProject("Project");
+        env.addExternalJars(projectPath, Util.getJavaClassLibs());
+        env.addGroovyJars(projectPath);
+        env.addGroovyNature("Project");
+        // remove old package fragment root so that names don't collide
+        env.removePackageFragmentRoot(projectPath, "");
+        env.addPackageFragmentRoot(projectPath, "src");
+        env.setOutputFolder(projectPath, "bin");
+        env.addGroovyClass(projectPath.append("src"), "p", "Other", "package p\nclass Other {\ndef x = 9 }");
+        env.addGroovyClass(projectPath.append("src"), "p", "Target", "package p\nnew Other()");
+        GroovyCompilationUnit unit = (GroovyCompilationUnit) env.getJavaProject("Project").findType("p.Target").getCompilationUnit();
+        
+        // now find the class reference
+        ClassNode type = ((ConstructorCallExpression) ((ReturnStatement) unit
+                .getModuleNode().getStatementBlock().getStatements().get(0))
+                .getExpression()).getType();
+        
+        // now check that the field initializer exists
+        Expression initialExpression = type.getField("x").getInitialExpression();
+        assertNotNull(initialExpression);
+        assertEquals("Should have been an int", VariableScope.INTEGER_CLASS_NODE, ClassHelper.getWrapper(initialExpression.getType()));
+        assertEquals("Should have been the number 9", "9", initialExpression.getText());
+        
+        // now check to ensure that there are no duplicate fields or properties
+        int declCount = 0;
+        for (FieldNode field : type.getFields()) {
+            if (field.getName().equals("x")) declCount++;
+        }
+        assertEquals("Should have found 'x' field exactly one time", 1, declCount);
+        
+        declCount = 0;
+        for (PropertyNode prop : type.getProperties()) {
+            if (prop.getName().equals("x")) declCount++;
+        }
+        assertEquals("Should have found 'x' property exactly one time", 1, declCount);
+        
     }
 
 	//

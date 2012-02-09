@@ -71,11 +71,7 @@ public class GenericInferencingTests extends AbstractInferencingTest {
     }
     
     public void testList4() throws Exception {
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType("[ 1 ]", "java.util.List<java.lang.Integer>");
-        } else {
-            assertType("[ 1 ]", "java.util.List<int>");
-        }
+        assertType("[ 1 ]", "java.util.List<java.lang.Integer>");
     }
     
     public void testList5() throws Exception {
@@ -91,11 +87,7 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         String toFind = "iterator";
         int start = contents.indexOf(toFind);
         int end = start + toFind.length();
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, start, end, "java.util.Iterator<java.lang.Integer>");
-        } else {
-            assertType(contents, start, end, "java.util.Iterator<int>");
-        }
+        assertType(contents, start, end, "java.util.Iterator<java.lang.Integer>");
     }
     
     public void testList7() throws Exception {
@@ -105,6 +97,17 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         int end = start + toFind.length();
         assertType(contents, start, end, "java.lang.Integer");
     }
+    
+    // GRECLIPSE-1040
+    public void testList8() throws Exception {
+        assertType("def x = new LinkedList()", "java.util.LinkedList");
+    }
+
+    // GRECLIPSE-1040
+    public void testSet1() throws Exception {
+        assertType("def x = new HashSet()", "java.util.HashSet");
+    }
+    
     
     public void testMap1() throws Exception {
         String contents = "new HashMap<String,Integer>()";
@@ -161,11 +164,7 @@ public class GenericInferencingTests extends AbstractInferencingTest {
 
     public void testMap7() throws Exception {
         String contents = "[ 1:1 ]";
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, "java.util.Map<java.lang.Integer,java.lang.Integer>");
-        } else {
-            assertType(contents, "java.util.Map<int,int>");
-        }
+        assertType(contents, "java.util.Map<java.lang.Integer,java.lang.Integer>");
     }
     
     public void testMap8() throws Exception {
@@ -173,11 +172,7 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         String toFind = "entrySet";
         int start = contents.lastIndexOf(toFind);
         int end = start + toFind.length();
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, start, end, "java.util.Set<java.util.Map$Entry<java.lang.Integer,java.lang.Integer>>");
-        } else {
-            assertType(contents, start, end, "java.util.Set<java.util.Map$Entry<int,int>>");
-        }
+        assertType(contents, start, end, "java.util.Set<java.util.Map$Entry<java.lang.Integer,java.lang.Integer>>");
     }
     
 
@@ -186,13 +181,13 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         String toFind = "f";
         int start = contents.lastIndexOf(toFind);
         int end = start + toFind.length();
-        // I'm surprised that the results in 1.7 and 1.8 are the same
-        // But I think it is because java.lang.Integer is declared explicitly
-//        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, start, end, "java.util.Map<java.lang.Integer,java.lang.Integer>");
-//        } else {
-//            assertType(contents, start, end, "java.util.Map<int,int>");
-//        }
+        assertType(contents, start, end, "java.util.Map<java.lang.Integer,java.lang.Integer>");
+    }
+
+    // GRECLIPSE-1040
+    public void testMap10() throws Exception {
+        String contents = "new HashMap()";
+        assertType(contents, "java.util.HashMap");
     }
 
     
@@ -521,6 +516,127 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         int end = start + toFind.length();
         assertType(contents, start, end, "java.lang.Integer");
     }
+    public void testDGMClosure9() throws Exception {
+        String contents = "[new Date()].eachWithIndex { val, i -> val }";
+        String toFind = "val";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.util.Date");
+    }
+    
+    public void testDGMClosure10() throws Exception {
+        String contents = "[''].eachWithIndex { val, i -> i }";
+        String toFind = "i";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure11() throws Exception {
+        String contents = "[1:new Date()].eachWithIndex { key, val, i -> val }";
+        String toFind = "val";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.util.Date");
+    }
+    
+    public void testDGMClosure12() throws Exception {
+        String contents = "[1:new Date()].eachWithIndex { key, val, i -> key }";
+        String toFind = "key";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure13() throws Exception {
+        String contents = "[1:new Date()].eachWithIndex { key, val, i -> i }";
+        String toFind = "i";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure14() throws Exception {
+        String contents = "[1:new Date()].each { key, val -> key }";
+        String toFind = "key";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure15() throws Exception {
+        String contents = "[1:new Date()].each { key, val -> val }";
+        String toFind = "val";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.util.Date");
+    }
+    
+    public void testDGMClosure16() throws Exception {
+        String contents = "[1:new Date()].collect { key, val -> key }";
+        String toFind = "key";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure17() throws Exception {
+        String contents = "[1:new Date()].collect { key, val -> val }";
+        String toFind = "val";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.util.Date");
+    }
+    
+    public void testDGMClosure18() throws Exception {
+        String contents = "[1].inject { a, b -> a }";
+        String toFind = "a";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure19() throws Exception {
+        String contents = "[1].inject { a, b -> b }";
+        String toFind = "b";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure20() throws Exception {
+        String contents = "[1].unique { a, b -> b }";
+        String toFind = "b";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure21() throws Exception {
+        String contents = "[1].unique { a, b -> a }";
+        String toFind = "a";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testDGMClosure22() throws Exception {
+        String contents = "[1f: 1d].collectEntries { key, value -> [value, key] } ";
+        String toFind = "value";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Double");
+    }
+    
+    public void testDGMClosure23() throws Exception {
+        String contents = "[1f: 1d].collectEntries { key, value -> [value, key] } ";
+        String toFind = "key";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Float");
+    }
+    
+    
     
     // See GRECLIPSE-997
     public void testNestedGenerics1() throws Exception {
@@ -617,6 +733,31 @@ public class GenericInferencingTests extends AbstractInferencingTest {
         int start = contents.lastIndexOf(toFind);
         int end = start + toFind.length();
         assertType(contents, start, end, "java.util.Map<java.lang.Class,java.lang.Class<java.lang.Integer>>");
+    }
+    
+    // See GRECLIPSE-1131
+    public void testEachOnNonIterables1() throws Exception {
+        String contents = "1.each { it }";
+        String toFind = "it";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    // See GRECLIPSE-1131
+    public void testEachOnNonIterables2() throws Exception {
+        String contents = "each { it }";
+        String toFind = "it";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "Search");
+    }
+    // See GRECLIPSE-1131
+    public void testEachOnNonIterables3() throws Exception {
+        String contents = "1.reverseEach { it }";
+        String toFind = "it";
+        int start = contents.lastIndexOf(toFind);
+        int end = start + toFind.length();
+        assertType(contents, start, end, "java.lang.Integer");
     }
     
 }

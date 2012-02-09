@@ -1,6 +1,8 @@
 package org.eclipse.jdt.groovy.search;
 
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Stack;
 
@@ -35,8 +37,18 @@ public class GenericsMapper {
 		GenericsType[] rgts;
 		GenericsMapper mapper = new GenericsMapper();
 
+		LinkedHashSet<ClassNode> uHierarchy = new LinkedHashSet<ClassNode>();
+		VariableScope.createTypeHierarchy(ucandidate, uHierarchy, false);
+		Iterator<ClassNode> uIter = uHierarchy.iterator();
+		LinkedHashSet<ClassNode> rHierarchy = new LinkedHashSet<ClassNode>();
+		VariableScope.createTypeHierarchy(rcandidate, rHierarchy, true);
+		Iterator<ClassNode> rIter = rHierarchy.iterator();
+
 		// travel up the hierarchy
-		while (ucandidate != null && rcandidate != null) {
+		while (uIter.hasNext() && rIter.hasNext()) {
+			ucandidate = uIter.next();
+			rcandidate = rIter.next();
+
 			ugts = ucandidate.getGenericsTypes();
 			ugts = ugts == null ? VariableScope.NO_GENERICS : ugts;
 			rgts = rcandidate.getGenericsTypes();
@@ -56,10 +68,8 @@ public class GenericsMapper {
 				// don't need to travel up the whole hierarchy. We can stop at the declaring class
 				break;
 			}
-
-			ucandidate = ucandidate.getSuperClass();
-			rcandidate = rcandidate.getUnresolvedSuperClass();
 		}
+
 		return mapper;
 	}
 
@@ -77,10 +87,11 @@ public class GenericsMapper {
 	 */
 	public ClassNode resolveParameter(GenericsType topGT, int depth) {
 		if (depth > 10) {
-			// I don't like this solution. I would like to remove this
 			// don't recur forever
-			Util.log(new Status(IStatus.WARNING, "org.eclipse.jdt.groovy.core",
-					"GRECLIPSE-1040: prevent infinite recursion when resolving type parameters on generics type: " + topGT));
+			// FIXADE This problem is believed fixed. If this conidtional is never reached, then
+			// we should be able to delete this section.
+			Util.log(new Status(IStatus.WARNING, "org.eclipse.jdt.groovy.core", //$NON-NLS-1$
+					"GRECLIPSE-1040: prevent infinite recursion when resolving type parameters on generics type: " + topGT)); //$NON-NLS-1$
 			return topGT.getType();
 		}
 
@@ -96,7 +107,7 @@ public class GenericsMapper {
 			origType = VariableScope.clone(origType);
 			GenericsType[] genericsTypes = origType.getGenericsTypes();
 			for (GenericsType genericsType : genericsTypes) {
-				if (genericsType == topGT) {
+				if (genericsType.getName().equals(topGT.getName())) {
 					// avoid infinite loops
 					// I still don't like this solution, but better than using a depth counter.
 					continue;
@@ -107,7 +118,6 @@ public class GenericsMapper {
 				genericsType.setName(genericsType.getType().getName());
 			}
 		}
-
 		return origType;
 	}
 
@@ -128,4 +138,5 @@ public class GenericsMapper {
 		}
 		return type;
 	}
+
 }

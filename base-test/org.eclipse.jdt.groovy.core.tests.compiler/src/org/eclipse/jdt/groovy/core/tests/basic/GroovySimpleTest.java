@@ -60,6 +60,8 @@ import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.omg.CORBA.Environment;
 
+import antlr.Version;
+
 
 public class GroovySimpleTest extends AbstractRegressionTest {
 
@@ -103,7 +105,7 @@ public class GroovySimpleTest extends AbstractRegressionTest {
         String[] newcps = new String[cps.length+3];
         System.arraycopy(cps,0,newcps,0,cps.length);
         try {
-        	URL groovyJar = Platform.getBundle("org.codehaus.groovy").getEntry("lib/groovy-1.8.0.jar");
+        	URL groovyJar = Platform.getBundle("org.codehaus.groovy").getEntry("lib/groovy-1.8.2.jar");
         	if (groovyJar==null) {
         		groovyJar = Platform.getBundle("org.codehaus.groovy").getEntry("lib/groovy-1.7.10.jar");
             	if (groovyJar==null) {
@@ -389,6 +391,89 @@ public class GroovySimpleTest extends AbstractRegressionTest {
     			"	                                                  ^\n" + 
     			"Groovy:\"httpClientControl.demand.generalConnection((1..1))\" is a method call expression, but it should be a variable expression at line: 1 column: 50. File: A.groovy @ line 1, column 50.\n" + 
     			"----------\n");
+    }
+    
+    public void testJava7() {
+    	if (isEclipse36()) { return; }
+    	complianceLevel = ClassFileConstants.JDK1_7;
+    	this.runConformTest(new String[]{
+    			"A.java",
+    			"import java.util.*;\n"+
+    			"public class A {\n"+
+    			"public static void main(String[]argv) {\n"+
+    			"  List<String> ls = new ArrayList<>();"+
+    			"  int i = 1_000_000;\n"+
+    			"  int b = 0b110101;\n"+
+    			"  try {\n"+
+    			"    foo();\n"+
+    			"  } catch (java.io.IOException | IllegalStateException re) {\n"+
+    			"  }\n"+
+    			"}\n"+
+    			"  public static void foo() throws java.io.IOException {}\n"+
+    			"}",
+    			"B.groovy",
+    			"print 'a'\n"},"");
+    }
+    
+    public void testJava7_2() {   
+    	if (isEclipse36()) { return; }
+    	// should fail if compliance level < 1.7
+    	// complianceLevel = ClassFileConstants.JDK1_7;
+    	this.runNegativeTest(new String[]{
+    			"A.java",
+    			"import java.util.*;\n"+
+    			"public class A {\n"+
+    			"public static void main(String[]argv) {\n"+
+    			"  List<String> ls = new ArrayList<>();"+
+    			"  int i = 1_000_000;\n"+
+    			"  int b = 0b110101;\n"+
+    			"}\n"+
+    			"  public static void foo() throws java.io.IOException {}\n"+
+    			"}",
+    			"B.groovy",
+    			"print 'a'\n"},
+    					"----------\n" + 
+    					"1. ERROR in A.java (at line 4)\n" + 
+    					"	List<String> ls = new ArrayList<>();  int i = 1_000_000;\n" + 
+    					"	                      ^^^^^^^^^\n" + 
+    					"\'<>\' operator is not allowed for source level below 1.7\n" + 
+    					"----------\n" + 
+    					"2. ERROR in A.java (at line 4)\n" + 
+    					"	List<String> ls = new ArrayList<>();  int i = 1_000_000;\n" + 
+    					"	                                              ^^^^^^^^^\n" + 
+    					"Underscores can only be used with source level 1.7 or greater\n" + 
+    					"----------\n");
+    	
+    }
+    
+    private boolean isEclipse36() {
+    	return Platform.getBundle("org.eclipse.jdt.core").getVersion().toString().startsWith("3.6");
+    }
+    
+    public void testJava7_3() {
+    	if (isEclipse36()) { return; }
+    	// should fail if compliance level < 1.7
+    	// complianceLevel = ClassFileConstants.JDK1_7;
+    	this.runNegativeTest(new String[]{
+    			"A.java",
+    			"import java.util.*;\n"+
+    			"public class A {\n"+
+    			"public static void main(String[]argv) {\n"+
+    			"  try {\n"+
+    			"    foo();\n"+
+    			"  } catch (java.io.IOException | IllegalStateException re) {\n"+
+    			"  }\n"+
+    			"}\n"+
+    			"  public static void foo() throws java.io.IOException {}\n"+
+    			"}",
+    			"B.groovy",
+    			"print 'a'\n"},
+    					"----------\n" + 
+    					"1. ERROR in A.java (at line 6)\n" + 
+    					"	} catch (java.io.IOException | IllegalStateException re) {\n" + 
+    					"	         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n" + 
+    					"Multi-catch parameters are not allowed for source level below 1.7\n" + 
+    					"----------\n");
     }
     
     // temporary removal (19th May 2011) - I think the 'shield' interface we have is hopefully sufficient.  Only problem may be recompiled references
@@ -1048,7 +1133,7 @@ public class GroovySimpleTest extends AbstractRegressionTest {
 			"1. ERROR in Move2.groovy (at line 3)\n" + 
 			"	final static BEATS = [\n" + 
 			"	^\n" + 
-			"Groovy:Variable definition has an incorrect modifier \'static\'.\n" + 
+			"Groovy:Modifier 'static' not allowed here.\n" + 
 			"----------\n");
     	}
     }

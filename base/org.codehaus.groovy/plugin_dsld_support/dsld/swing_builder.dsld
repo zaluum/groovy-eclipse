@@ -13,12 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package dsld
+package dsld    
 
 import groovy.swing.SwingBuilder
 import groovy.swing.impl.*
 import javax.swing.*
 import javax.swing.border.CompoundBorder;
+import groovy.model.DefaultTableColumn
 
 import org.codehaus.groovy.binding.*
 import java.awt.*

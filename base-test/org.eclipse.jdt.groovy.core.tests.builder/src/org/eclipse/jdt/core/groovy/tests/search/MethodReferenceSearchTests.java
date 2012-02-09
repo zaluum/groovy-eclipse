@@ -38,6 +38,11 @@ public class MethodReferenceSearchTests extends AbstractGroovySearchTest {
     public void testMethodReferencesInScript1() throws Exception {
         doTestForTwoMethodReferencesInScript("new First().xxx\nnew First()\n.\nxxx");
     }
+    
+    public void testMethodReferencesInScript1GRE_1180() throws Exception {
+        doTestForTwoMethodReferencesInScript("new First().xxx\n'xxx'\n\"xxx\"\n\"\"\"xxx\"\"\"\nnew First()\n.\nxxx");
+    }
+
     public void testMethodReferencesInScript2() throws Exception {
         doTestForTwoMethodReferencesInScript("First f = new First()\n f.xxx = f.xxx");
     }
@@ -105,6 +110,99 @@ public class MethodReferenceSearchTests extends AbstractGroovySearchTest {
                 "    def nothing = super.xxx\n" +  // yes...method reference passed as a closure
                 "  }\n" +
         "}");
+    }
+    
+    public void testOverloadedMethodReferences1() throws Exception {
+    	// should match on the method reference with precise # of args as well as method reference with unmatched number of args
+    	doTestForTwoMethodReferences(
+    			"interface First {\n" + 
+    			"    void xxx()\n" + 
+    			"    void xxx(a)\n" + 
+    			"}",
+    			"public class Second implements First {\n" + 
+		        "    public void other() {\n" +
+		        "        xxx()\n" +
+		        "    }\n" +
+    			"    public void xxx() {\n" +
+    			"        xxx(a)\n" +
+    			"    }\n" +
+    			"    void xxx(a) {\n" +
+    			"        xxx(a,b)\n" +
+    			"    }\n" +
+    			"}", false, 0, "xxx" );
+    }
+    
+    public void testOverloadedMethodReferences2() throws Exception {
+        // should match on the method reference with precise # of args as well as method reference with unmatched number of args
+        doTestForTwoMethodReferences(
+                "interface First {\n" + 
+                "    void xxx(a)\n" + 
+                "    void xxx()\n" + 
+                "}",
+                "public class Second implements First {\n" + 
+                "    public void other() {\n" +
+                "        xxx(a)\n" +
+                "    }\n" +
+                "    public void xxx() {\n" +
+                "        xxx()\n" +
+                "    }\n" +
+                "    void xxx(a) {\n" +
+                "        xxx(a,b)\n" +
+                "    }\n" +
+                "}", false, 0, "xxx" );
+    }
+    
+    public void testOverloadedMethodReferences3() throws Exception {
+        // should match on the method reference with precise # of args as well as method reference with unmatched number of args
+    	createUnit("Sub", 
+                "interface Sub extends First { void xxx(a) }");
+        doTestForTwoMethodReferences(
+        		"interface First {\n" + 
+                        "    void xxx(a)\n" + 
+                        "    void xxx()\n" + 
+                        "}",
+                "public class Second implements Sub {\n" + 
+                "    public void other() {\n" +
+                "        xxx(a)\n" +
+                "    }\n" +
+                "    public void xxx() {\n" +
+                "        xxx()\n" +
+                "    }\n" +
+                "    void xxx(a) {\n" +
+                "        xxx(a,b)\n" +
+                "    }\n" +
+                "}", false, 0, "xxx" );
+    }
+    
+    public void testOverloadedMethodReferences4() throws Exception {
+        // should match on the method reference with precise # of args as well as method reference with unmatched number of args
+        createUnit("Sub", 
+                "interface Sub extends First {\n" +
+                "    void xxx(a)\n" +
+                "    void xxx(a,b,c)\n" +
+                "}");
+        doTestForTwoMethodReferences(
+                "interface First {\n" + 
+                "    void xxx(a,b)\n" + 
+                "    void xxx(a)\n" + 
+                "}",
+                "public class Second implements Sub {\n" + 
+                "    public void other() {\n" +
+                "        First f\n" +
+                "        f.xxx(a,b,c)\n" +
+                "    }\n" +
+                "    public void xxx() {\n" +
+                "        xxx(a)\n" +
+                "        xxx(a,b,c)\n" +
+                "        Sub s\n" +
+                "        s.xxx(a)\n" +
+                "        s.xxx(a,b,c)\n" +
+                "    }\n" +
+                "    void xxx(a) {\n" +
+                "        Sub s\n" +
+                "        s.xxx(a,b)\n" +
+                "    }\n" +
+                "}", false, 0, "xxx" );
     }
     
     private void doTestForTwoMethodReferencesInScript(String secondContents) throws JavaModelException {

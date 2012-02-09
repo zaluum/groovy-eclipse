@@ -10,18 +10,32 @@
  *******************************************************************************/
 package org.eclipse.jdt.groovy.search;
 
+import groovy.lang.Tuple;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.Stack;
-import java.util.Map.Entry;
+import java.util.regex.Matcher;
 
 import org.codehaus.groovy.ast.ASTNode;
 import org.codehaus.groovy.ast.ClassHelper;
@@ -30,12 +44,18 @@ import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.GenericsType;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.ModuleNode;
+import org.codehaus.groovy.ast.Parameter;
 import org.codehaus.groovy.ast.PropertyNode;
 import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.expr.ClosureExpression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
+import org.codehaus.groovy.runtime.DateGroovyMethods;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.DefaultGroovyStaticMethods;
+import org.codehaus.groovy.runtime.EncodingGroovyMethods;
+import org.codehaus.groovy.runtime.ProcessGroovyMethods;
+import org.codehaus.groovy.runtime.SwingGroovyMethods;
+import org.codehaus.groovy.runtime.XmlGroovyMethods;
 import org.codehaus.jdt.groovy.internal.compiler.ast.LazyGenericsType;
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.jdt.core.Signature;
@@ -52,19 +72,47 @@ public class VariableScope {
 
 	public static final ClassNode OBJECT_CLASS_NODE = ClassHelper.OBJECT_TYPE;
 	public static final ClassNode LIST_CLASS_NODE = ClassHelper.LIST_TYPE;
+	public static final ClassNode RANGE_CLASS_NODE = ClassHelper.RANGE_TYPE;
+	public static final ClassNode TUPLE_CLASS_NODE = ClassHelper.make(Tuple.class);
 	public static final ClassNode PATTERN_CLASS_NODE = ClassHelper.PATTERN_TYPE;
+	public static final ClassNode MATCHER_CLASS_NODE = ClassHelper.make(Matcher.class);
 	public static final ClassNode MAP_CLASS_NODE = ClassHelper.MAP_TYPE;
 	public static final ClassNode STRING_CLASS_NODE = ClassHelper.STRING_TYPE;
 	public static final ClassNode GSTRING_CLASS_NODE = ClassHelper.GSTRING_TYPE;
-	public static final ClassNode DGM_CLASS_NODE = ClassHelper.make(DefaultGroovyMethods.class);
-	public static final ClassNode DGSM_CLASS_NODE = ClassHelper.make(DefaultGroovyStaticMethods.class);
 	public static final ClassNode VOID_CLASS_NODE = ClassHelper.make(void.class);
 	public static final ClassNode VOID_WRAPPER_CLASS_NODE = ClassHelper.void_WRAPPER_TYPE;
 	public static final ClassNode NUMBER_CLASS_NODE = ClassHelper.make(Number.class);
 	public static final ClassNode ITERATOR_CLASS = ClassHelper.make(Iterator.class);
 	public static final ClassNode ENUMERATION_CLASS = ClassHelper.make(Enumeration.class);
 	public static final ClassNode INPUT_STREAM_CLASS = ClassHelper.make(InputStream.class);
+	public static final ClassNode OUTPUT_STREAM_CLASS = ClassHelper.make(OutputStream.class);
 	public static final ClassNode DATA_INPUT_STREAM_CLASS = ClassHelper.make(DataInputStream.class);
+	public static final ClassNode DATA_OUTPUT_STREAM_CLASS = ClassHelper.make(DataOutputStream.class);
+	public static final ClassNode OBJECT_OUTPUT_STREAM = ClassHelper.make(ObjectOutputStream.class);
+	public static final ClassNode OBJECT_INPUT_STREAM = ClassHelper.make(ObjectInputStream.class);
+	public static final ClassNode FILE_CLASS_NODE = ClassHelper.make(File.class);
+	public static final ClassNode BUFFERED_READER_CLASS_NODE = ClassHelper.make(BufferedReader.class);
+	public static final ClassNode BUFFERED_WRITER_CLASS_NODE = ClassHelper.make(BufferedWriter.class);
+	public static final ClassNode PRINT_WRITER_CLASS_NODE = ClassHelper.make(PrintWriter.class);
+
+	// standard category classes
+	public static final ClassNode DGM_CLASS_NODE = ClassHelper.make(DefaultGroovyMethods.class);
+	public static final ClassNode EGM_CLASS_NODE = ClassHelper.make(EncodingGroovyMethods.class);
+	public static final ClassNode PGM_CLASS_NODE = ClassHelper.make(ProcessGroovyMethods.class);
+	public static final ClassNode SGM_CLASS_NODE = ClassHelper.make(SwingGroovyMethods.class);
+	public static final ClassNode XGM_CLASS_NODE = ClassHelper.make(XmlGroovyMethods.class);
+	public static final ClassNode DGSM_CLASS_NODE = ClassHelper.make(DefaultGroovyStaticMethods.class);
+	public static final ClassNode DATE_GM_CLASS_NODE = ClassHelper.make(DateGroovyMethods.class);
+
+	// not available on all platforms
+	// public static final ClassNode PLUGIN5_GM_CLASS_NODE = ClassHelper
+	// .make(org.codehaus.groovy.vmplugin.v5.PluginDefaultGroovyMethods.class);
+	// public static final ClassNode PLUGIN6_GM_CLASS_NODE = ClassHelper
+	// .make(org.codehaus.groovy.vmplugin.v6.PluginDefaultGroovyMethods.class);
+
+	public static final Set<ClassNode> ALL_DEFAULT_CATEGORIES = Collections.unmodifiableSet(new LinkedHashSet<ClassNode>(Arrays
+			.asList(DGM_CLASS_NODE, DGSM_CLASS_NODE, EGM_CLASS_NODE, PGM_CLASS_NODE, SGM_CLASS_NODE, XGM_CLASS_NODE,
+					DATE_GM_CLASS_NODE/* , PLUGIN5_GM_CLASS_NODE, PLUGIN6_GM_CLASS_NODE */)));
 
 	// don't cache because we have to add properties
 	public static final ClassNode CLASS_CLASS_NODE = ClassHelper.makeWithoutCaching(Class.class);
@@ -197,6 +245,10 @@ public class VariableScope {
 		return shared.wormhole;
 	}
 
+	public boolean isMethodCall() {
+		return methodCallNumberOfArguments >= 0;
+	}
+
 	public ASTNode getEnclosingNode() {
 		if (nodeStack.size() > 1) {
 			ASTNode current = nodeStack.pop();
@@ -243,10 +295,7 @@ public class VariableScope {
 			}
 			return categories;
 		} else {
-			Set<ClassNode> categories = new HashSet<ClassNode>();
-			categories.add(DGM_CLASS_NODE); // default category
-			categories.add(DGSM_CLASS_NODE); // default category
-			return categories;
+			return new HashSet<ClassNode>(ALL_DEFAULT_CATEGORIES);
 		}
 	}
 
@@ -370,8 +419,10 @@ public class VariableScope {
 	 *         return type and taking no parameters
 	 */
 	private static boolean isGetter(MethodNode methodNode) {
-		return methodNode.getReturnType() != VOID_CLASS_NODE && methodNode.getParameters().length == 0
-				&& methodNode.getName().startsWith("get") && methodNode.getName().length() > 3; //$NON-NLS-1$
+		return methodNode.getReturnType() != VOID_CLASS_NODE
+				&& methodNode.getParameters().length == 0
+				&& ((methodNode.getName().startsWith("get") && methodNode.getName().length() > 3) || (methodNode.getName()
+						.startsWith("is") && methodNode.getName().length() > 2));
 	}
 
 	private static void initializeProperties(ClassNode node) {
@@ -384,9 +435,10 @@ public class VariableScope {
 	}
 
 	public static boolean isVoidOrObject(ClassNode maybeVoid) {
-		return maybeVoid.getName().equals(VOID_CLASS_NODE.getName())
-				|| maybeVoid.getName().equals(VOID_WRAPPER_CLASS_NODE.getName())
-				|| maybeVoid.getName().equals(OBJECT_CLASS_NODE.getName());
+		return maybeVoid != null
+				&& (maybeVoid.getName().equals(VOID_CLASS_NODE.getName())
+						|| maybeVoid.getName().equals(VOID_WRAPPER_CLASS_NODE.getName()) || maybeVoid.getName().equals(
+						OBJECT_CLASS_NODE.getName()));
 	}
 
 	/**
@@ -537,6 +589,20 @@ public class VariableScope {
 		return clone;
 	}
 
+	public static ClassNode clonedRange() {
+		ClassNode clone = clone(RANGE_CLASS_NODE);
+		cleanGenerics(clone.getGenericsTypes()[0]);
+		return clone;
+	}
+
+	public static ClassNode clonedTuple() {
+		// ClassNode clone = clone(TUPLE_CLASS_NODE);
+		// cleanGenerics(clone.getGenericsTypes()[0]);
+		// return clone;
+		// the typle class is not parameterized in Groovy 1.7, so just return list.
+		return clonedList();
+	}
+
 	private static void cleanGenerics(GenericsType gt) {
 		gt.getType().setGenericsTypes(null);
 		gt.setName("java.lang.Object");
@@ -618,26 +684,6 @@ public class VariableScope {
 		newgt.setResolved(origgt.isResolved());
 		newgt.setSourcePosition(origgt);
 		return newgt;
-	}
-
-	/**
-	 * attempt to get the component type of rhs
-	 * 
-	 * @param c
-	 * @return component type, generic type of collection, or c
-	 */
-	public static ClassNode deref(ClassNode c) {
-		if (c.isArray()) {
-			return c.getComponentType();
-		} else {
-			GenericsType[] genericsTypes = c.getGenericsTypes();
-			if (genericsTypes != null && genericsTypes.length > 0) {
-				// use length-1 so that both Maps and Collections are handled
-				// for maps, we return the type of <value>.
-				return genericsTypes[genericsTypes.length - 1].getType();
-			}
-		}
-		return c;
 	}
 
 	/**
@@ -726,5 +772,140 @@ public class VariableScope {
 				throw new UnsupportedOperationException();
 			}
 		};
+	}
+
+	/**
+	 * Finds all interfaces transitively implemented by the type passed in (including <code>type</code> if it is an interface). The
+	 * ordering is that the interfaces closest to type are first (in declared order) and then interfaces declared on super
+	 * interfaces occur (if they are not duplicates).
+	 * 
+	 * @param type the interface to look for
+	 * @param allInterfaces an accumulator set that will ensure that each interface exists at most once and in a predictible order
+	 * @param useResolved whether or not to use the resolved interfaces.
+	 */
+	public static void findAllInterfaces(ClassNode type, LinkedHashSet<ClassNode> allInterfaces, boolean useResolved) {
+		if (!useResolved) {
+			type = type.redirect();
+		}
+		// do the !isInterface check because if this call is coming from createHierarchy, then
+		// the class would have already been added.
+		if (!type.isInterface() || !allInterfaces.contains(type)) {
+			if (type.isInterface()) {
+				allInterfaces.add(type);
+			}
+			ClassNode[] interfaces;
+			// Urrrgh...I don't like this.
+			// Groovy compiler has a different notion of 'resolved' than we do here.
+			// Groovy compiler considers a resolved ClassNode one that has no redirect.
+			// however, we consider a ClassNode to be resolved if its type parameters are resolved.
+			// that is why we call getUnresolvedInterfaces if useResolved is true (and vice versa).
+			if (useResolved) {
+				interfaces = type.getUnresolvedInterfaces();
+			} else {
+				interfaces = type.getInterfaces();
+			}
+			if (interfaces != null) {
+				for (ClassNode superInterface : interfaces) {
+					findAllInterfaces(superInterface, allInterfaces, useResolved);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Creates a type hierarchy for the <code>clazz</code>>, including self. Classes come first and then interfaces. FIXADE The
+	 * ordering of super interfaces will not be the same as in
+	 * {@link VariableScope#findAllInterfaces(ClassNode, LinkedHashSet, boolean)}. Should we make it the same?
+	 * 
+	 * @param type
+	 * @param allClasses
+	 * @param useResolved
+	 */
+	public static void createTypeHierarchy(ClassNode type, LinkedHashSet<ClassNode> allClasses, boolean useResolved) {
+		if (!useResolved) {
+			type = type.redirect();
+		}
+		if (!allClasses.contains(type)) {
+			if (!type.isInterface()) {
+				allClasses.add(type);
+				ClassNode superClass;
+				// Urrrgh...I don't like this.
+				// Groovy compiler has a different notion of 'resolved' than we do here.
+				// Groovy compiler considers a resolved ClassNode one that has no redirect.
+				// however, we consider a ClassNode to be resolved if its type parameters are resolved.
+				// that is why we call getUnresolvedSuperClass if useResolved is true (and vice versa).
+				if (useResolved) {
+					superClass = type.getUnresolvedSuperClass();
+				} else {
+					superClass = type.getSuperClass();
+				}
+
+				if (superClass != null) {
+					createTypeHierarchy(superClass, allClasses, useResolved);
+				}
+			}
+			// interfaces will be added from the top-most type first
+			findAllInterfaces(type, allClasses, useResolved);
+		}
+	}
+
+	/**
+	 * Extracts an element type from a collection
+	 * 
+	 * @param collectionType a collection object, or an object that is iterable
+	 * @return
+	 */
+	public static ClassNode extractElementType(ClassNode collectionType) {
+
+		// if array, then use the component type
+		if (collectionType.isArray()) {
+			return collectionType.getComponentType();
+		}
+
+		// check to see if this type has an iterator method
+		// if so, then resolve the type parameters
+		MethodNode iterator = collectionType.getMethod("iterator", new Parameter[0]);
+		ClassNode typeToResolve = null;
+		if (iterator == null && collectionType.isInterface()) {
+			// could be a type that implements List
+			if (collectionType.implementsInterface(VariableScope.LIST_CLASS_NODE) && collectionType.getGenericsTypes() != null
+					&& collectionType.getGenericsTypes().length == 1) {
+				typeToResolve = collectionType;
+			} else if (collectionType.declaresInterface(ITERATOR_CLASS) || collectionType.equals(ITERATOR_CLASS)
+					|| collectionType.declaresInterface(ENUMERATION_CLASS) || collectionType.equals(ENUMERATION_CLASS)) {
+				// if the type is an iterator or an enumeration, then resolve the type parameter
+				typeToResolve = collectionType;
+			} else if (collectionType.declaresInterface(MAP_CLASS_NODE) || collectionType.equals(MAP_CLASS_NODE)) {
+				// if the type is a map, then resolve the entrySet
+				MethodNode entrySetMethod = collectionType.getMethod("entrySet", new Parameter[0]);
+				if (entrySetMethod != null) {
+					typeToResolve = entrySetMethod.getReturnType();
+				}
+			}
+		} else if (iterator != null) {
+			typeToResolve = iterator.getReturnType();
+		}
+
+		if (typeToResolve != null) {
+			typeToResolve = clone(typeToResolve);
+			ClassNode unresolvedCollectionType = collectionType.redirect();
+			GenericsMapper mapper = GenericsMapper.gatherGenerics(collectionType, unresolvedCollectionType);
+			ClassNode resolved = resolveTypeParameterization(mapper, typeToResolve);
+
+			// the first type parameter of resolvedReturn should be what we want
+			GenericsType[] resolvedReturnGenerics = resolved.getGenericsTypes();
+			if (resolvedReturnGenerics != null && resolvedReturnGenerics.length > 0) {
+				return resolvedReturnGenerics[0].getType();
+			}
+		}
+
+		// this is hardcoded from DGM
+		if (collectionType.declaresInterface(INPUT_STREAM_CLASS) || collectionType.declaresInterface(DATA_INPUT_STREAM_CLASS)
+				|| collectionType.equals(INPUT_STREAM_CLASS) || collectionType.equals(DATA_INPUT_STREAM_CLASS)) {
+			return BYTE_CLASS_NODE;
+		}
+
+		// else assume collection of size 1 (itself)
+		return collectionType;
 	}
 }

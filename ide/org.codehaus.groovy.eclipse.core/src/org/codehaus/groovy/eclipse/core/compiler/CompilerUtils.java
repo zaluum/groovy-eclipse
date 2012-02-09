@@ -28,6 +28,8 @@ import java.util.List;
 
 import org.codehaus.groovy.eclipse.core.GroovyCore;
 import org.codehaus.groovy.eclipse.core.GroovyCoreActivator;
+import org.codehaus.groovy.frameworkadapter.util.CompilerLevelUtils;
+import org.codehaus.groovy.frameworkadapter.util.SpecifiedVersion;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
@@ -68,7 +70,7 @@ public class CompilerUtils {
 
         // it might be that there is no 1.8 jar. If the 1.8 jar is missing, we
         // use 1.7
-        Bundle[] active = Platform.getBundles("org.codehaus.groovy", "1.8.0");
+        Bundle[] active = Platform.getBundles("org.codehaus.groovy", "1.8.2");
         return active == null || active.length == 0;
     }
 
@@ -89,10 +91,10 @@ public class CompilerUtils {
     }
 
     public static Bundle getActiveGroovyBundle() {
-        String version17 = "[1.7.0,1.8.0)";
-        String version18 = "1.8.0";
+        String version17 = "[1.7.0,1.7.99)";
+        String version18 = "1.8.2";
         Bundle[] active = Platform.getBundles("org.codehaus.groovy", (isGroovy18DisabledOrMissing() ? version17 : version18));
-        return active.length > 0 ? active[0] : null;
+        return active != null && active.length > 0 ? active[0] : null;
     }
 
 
@@ -105,7 +107,6 @@ public class CompilerUtils {
      *         org.codehaus.groovy project.
      * @throws BundleException
      */
-    @SuppressWarnings("unchecked")
     public static URL getExportedGroovyAllJar() {
         try {
             Bundle groovyBundle = CompilerUtils.getActiveGroovyBundle();
@@ -136,7 +137,6 @@ public class CompilerUtils {
      *
      * @return jline, servlet-api, ivy, and commons-cli
      */
-    @SuppressWarnings("unchecked")
     public static URL[] getExtraJarsForClasspath() {
         try {
             Bundle groovyBundle = CompilerUtils.getActiveGroovyBundle();
@@ -191,7 +191,7 @@ public class CompilerUtils {
      */
     public static IStatus switchVersions(boolean toVersion18) {
         String version17 = "[1.7.0,1.8.0)";
-        String version18 = "1.8.0";
+        String version18 = "[1.8.0,1.9.0)";
 
 
         try {
@@ -221,8 +221,19 @@ public class CompilerUtils {
                 if (!toVersion18) {
                     DisabledInfo info = createDisabledInfo(state, bundle.getBundleId());
                     Platform.getPlatformAdmin().addDisabledInfo(info);
+                    switch (bundle.getState()) {
+                        case Bundle.ACTIVE:
+                        case Bundle.INSTALLED:
+                        case Bundle.STARTING:
+                        case Bundle.RESOLVED:
+                            bundle.stop();
+                    }
                 }
             }
+
+            CompilerLevelUtils.writeConfigurationVersion(toVersion18 ? SpecifiedVersion._18 : SpecifiedVersion._17,
+            // need to get the system bundle
+                    GroovyCoreActivator.getDefault().getBundle().getBundleContext().getBundle(0).getBundleContext());
             return Status.OK_STATUS;
         } catch (Exception e) {
             GroovyCore.logException(e.getMessage(), e);

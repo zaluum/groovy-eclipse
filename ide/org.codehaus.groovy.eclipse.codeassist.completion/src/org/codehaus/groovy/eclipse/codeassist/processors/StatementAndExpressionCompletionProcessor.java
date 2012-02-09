@@ -17,7 +17,6 @@
 package org.codehaus.groovy.eclipse.codeassist.processors;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -36,12 +35,13 @@ import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
 import org.codehaus.groovy.ast.expr.StaticMethodCallExpression;
+import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.stmt.Statement;
-import org.codehaus.groovy.eclipse.codeassist.proposals.AbstractProposalCreator;
-import org.codehaus.groovy.eclipse.codeassist.proposals.CategoryProposalCreator;
-import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyExtendedCompletionContext;
+import org.codehaus.groovy.eclipse.codeassist.completions.GroovyExtendedCompletionContext;
+import org.codehaus.groovy.eclipse.codeassist.creators.AbstractProposalCreator;
+import org.codehaus.groovy.eclipse.codeassist.creators.CategoryProposalCreator;
+import org.codehaus.groovy.eclipse.codeassist.creators.IProposalCreator;
 import org.codehaus.groovy.eclipse.codeassist.proposals.IGroovyProposal;
-import org.codehaus.groovy.eclipse.codeassist.proposals.IProposalCreator;
 import org.codehaus.groovy.eclipse.codeassist.requestor.ContentAssistContext;
 import org.codehaus.groovy.eclipse.codeassist.requestor.ContentAssistLocation;
 import org.codehaus.groovy.eclipse.core.GroovyCore;
@@ -62,6 +62,7 @@ import org.eclipse.jdt.groovy.search.VariableScope.VariableInfo;
 import org.eclipse.jdt.internal.codeassist.InternalCompletionContext;
 import org.eclipse.jdt.internal.core.SearchableEnvironment;
 import org.eclipse.jdt.internal.core.util.Util;
+import org.eclipse.jdt.ui.text.java.IJavaCompletionProposal;
 import org.eclipse.jdt.ui.text.java.JavaContentAssistInvocationContext;
 import org.eclipse.jface.text.contentassist.ICompletionProposal;
 
@@ -92,7 +93,7 @@ public class StatementAndExpressionCompletionProcessor extends
         public ExpressionCompletionRequestor() {
             // remember the rightmost part of the LHS of a
             // binary expression
-            ASTNode maybeLHS = getContext().completionNode;
+            ASTNode maybeLHS = getContext().getPerceivedCompletionNode();
             while (maybeLHS != null) {
                 if (maybeLHS instanceof BinaryExpression) {
                     maybeLHS = arrayAccessLHS = ((BinaryExpression) maybeLHS)
@@ -147,26 +148,8 @@ public class StatementAndExpressionCompletionProcessor extends
             }
             if (success) {
                 maybeRememberLHSType(result);
-                resultingType = result.type;
-                if (derefList) {
+                resultingType = findResultingType(result, derefList);
 
-                    // GRECLIPSE-742: does the LHS type have a 'getAt' method?
-                    boolean getAtFound = false;
-                    List<MethodNode> getAts = resultingType.getMethods("getAt");
-                    for (MethodNode getAt : getAts) {
-                        if (getAt.getParameters() != null
-                                && getAt.getParameters().length == 1) {
-                            resultingType = getAt.getReturnType();
-                            getAtFound = true;
-                        }
-                    }
-
-                    if (!getAtFound) {
-                        for (int i = 0; i < derefCount; i++) {
-                            resultingType = VariableScope.deref(resultingType);
-                        }
-                    }
-                }
                 categories = result.scope.getCategoryNames();
                 visitSuccessful = true;
                 isStatic = node instanceof StaticMethodCallExpression ||
@@ -177,6 +160,55 @@ public class StatementAndExpressionCompletionProcessor extends
                 return VisitStatus.STOP_VISIT;
             }
             return VisitStatus.CONTINUE;
+        }
+
+        private ClassNode findResultingType(TypeLookupResult result, boolean derefList) {
+            // FIXADE careful here.  this may only be necessary
+            // if completing on a method call with an implicit 'this'.
+            ClassNode candidate = getContext().location == ContentAssistLocation.METHOD_CONTEXT ? result.declaringType
+                    : result.type;
+            if (derefList) {
+                for (int i = 0; i < derefCount; i++) {
+
+                    // GRECLIPSE-742: does the LHS type have a 'getAt' method?
+                    boolean getAtFound = false;
+                    List<MethodNode> getAts = candidate.getMethods("getAt");
+                    for (MethodNode getAt : getAts) {
+                        if (getAt.getParameters() != null && getAt.getParameters().length == 1) {
+                            candidate = getAt.getReturnType();
+                            getAtFound = true;
+                        }
+                    }
+
+                    if (!getAtFound) {
+                        if (VariableScope.MAP_CLASS_NODE.equals(candidate)) {
+                            // for maps, always use the type of value
+                            candidate = candidate.getGenericsTypes()[1].getType();
+                        } else {
+                            for (int j = 0; j < derefCount; j++) {
+                                candidate = VariableScope.extractElementType(candidate);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // now look at spread expressions
+            // might be part of a spread operation
+            boolean extractElementType = false; // for spread operations
+            ASTNode enclosing = result.scope.getEnclosingNode();
+            if (enclosing instanceof MethodCallExpression) {
+                extractElementType = ((MethodCallExpression) enclosing).isSpreadSafe();
+            } else if (enclosing instanceof PropertyExpression) {
+                extractElementType = ((PropertyExpression) enclosing).isSpreadSafe();
+            }
+            if (extractElementType) {
+                candidate = VariableScope.extractElementType(candidate);
+            }
+            if (ClassHelper.isPrimitiveType(candidate)) {
+                candidate = ClassHelper.getWrapper(candidate);
+            }
+            return candidate;
         }
 
         /**
@@ -209,7 +241,12 @@ public class StatementAndExpressionCompletionProcessor extends
         }
 
         private boolean isAssignmentOfLhs(BinaryExpression node) {
-            return node != null && node.getLeftExpression() == lhsNode;
+            if (node != null) {
+                Expression expression = node.getLeftExpression();
+                return expression.getClass() == lhsNode.getClass() && expression.getStart() == lhsNode.getStart()
+                        && expression.getEnd() == lhsNode.getEnd();
+            }
+            return false;
         }
 
         private boolean doTest(ASTNode node) {
@@ -294,7 +331,7 @@ public class StatementAndExpressionCompletionProcessor extends
             JavaContentAssistInvocationContext javaContext,
             SearchableEnvironment nameEnvironment) {
         super(context, javaContext, nameEnvironment);
-        this.completionNode = context.completionNode;
+        this.completionNode = context.getPerceivedCompletionNode();
         this.lhsNode = context.lhsNode;
     }
 
@@ -324,7 +361,7 @@ public class StatementAndExpressionCompletionProcessor extends
                             .setCurrentScope(requestor.currentScope);
                 }
                 groovyProposals.addAll(creator.findAllProposals(completionType, requestor.categories,
-                        context.completionExpression, isStatic));
+                        context.getPerceivedCompletionExpression(), isStatic));
             }
         } else {
             // we are at the statement location of a script
@@ -340,7 +377,7 @@ public class StatementAndExpressionCompletionProcessor extends
             }
             if (containingClass != null) {
                 groovyProposals.addAll(new CategoryProposalCreator().findAllProposals(containingClass,
-                        Collections.singleton(VariableScope.DGM_CLASS_NODE), context.completionExpression, false));
+                        VariableScope.ALL_DEFAULT_CATEGORIES, context.getPerceivedCompletionExpression(), false));
             }
             completionType = context.containingDeclaration instanceof ClassNode ? (ClassNode) context.containingDeclaration
                     : context.unit.getModuleNode().getScriptClassDummy();
@@ -402,11 +439,12 @@ public class StatementAndExpressionCompletionProcessor extends
         JavaContentAssistInvocationContext javaContext = getJavaContext();
         for (IGroovyProposal groovyProposal : groovyProposals) {
             try {
-                javaProposals.add(groovyProposal.createJavaProposal(context,
-                        javaContext));
+                IJavaCompletionProposal javaProposal = groovyProposal.createJavaProposal(context, javaContext);
+                if (javaProposal != null) {
+                    javaProposals.add(javaProposal);
+                }
             } catch (Exception e) {
-                GroovyCore
-                        .logException(
+                GroovyCore.logException(
                                 "Exception when creating groovy completion proposal",
                                 e);
             }
@@ -445,9 +483,25 @@ public class StatementAndExpressionCompletionProcessor extends
      * @return
      */
     private ClassNode getCompletionType(ExpressionCompletionRequestor requestor) {
-         return getContext().location == ContentAssistLocation.EXPRESSION ? requestor.resultingType :
-                // use the current 'this' type so that closure types are correct
-             requestor.currentScope.lookupName("this").type;
+        if (getContext().location == ContentAssistLocation.EXPRESSION) {
+            return requestor.resultingType;
+        } else if (getContext().location == ContentAssistLocation.METHOD_CONTEXT) {
+            // if we are completing on a variable expression here, that means
+            // we have something like this:
+            // myMethodCall _
+            // so, we want to look at the type of 'this' to complete on
+            return completionNode instanceof VariableExpression ? requestor.currentScope.lookupName("this").type
+                    : requestor.resultingType;
+        } else {
+            // use the current 'this' type so that closure types are correct
+            VariableInfo info= requestor.currentScope.lookupName("this");
+            if (info != null) {
+                return info.type;
+            } else {
+                // will only happen if in top level scope
+                return requestor.resultingType;
+            }
+        }
     }
 
     /**

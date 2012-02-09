@@ -25,6 +25,7 @@ import org.codehaus.groovy.eclipse.codeassist.proposals.AbstractGroovyProposal;
 import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyCategoryMethodProposal;
 import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyFieldProposal;
 import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyMethodProposal;
+import org.codehaus.groovy.eclipse.codeassist.proposals.GroovyPropertyProposal;
 import org.eclipse.jdt.groovy.search.VariableScope;
 
 
@@ -114,7 +115,7 @@ public enum Relevance {
             AbstractGroovyProposal groovyProposal) {
         // dispatch on the kind of groovyProposal
 
-        if (groovyProposal instanceof GroovyFieldProposal) {
+        if (groovyProposal instanceof GroovyFieldProposal || groovyProposal instanceof GroovyPropertyProposal) {
             AnnotatedNode node = groovyProposal.getAssociatedNode();
             if (node instanceof FieldNode
                     && IGNORED_FIELD_NAMES.contains(((FieldNode) node)
@@ -130,9 +131,7 @@ public enum Relevance {
             }
 
             MethodNode method = (MethodNode) node;
-            if (method.getDeclaringClass().equals(VariableScope.DGM_CLASS_NODE)
-                    || method.getDeclaringClass().equals(
-                            VariableScope.DGSM_CLASS_NODE)) {
+            if (VariableScope.ALL_DEFAULT_CATEGORIES.contains(method.getDeclaringClass())) {
                 return VERY_LOW;
             } else {
                 // should be higher relevance than regular methods

@@ -119,7 +119,7 @@ class DefaultLanguageSupport implements LanguageSupport {
 	public void filterNonSourceMembers(BinaryType binaryType) {
 		// nop
 	}
-
+	
 	public TextEdit updateContent(org.eclipse.jdt.core.ICompilationUnit cu, String[] destPackageName, String[] currPackageName,
 			String newName) {
 		return null;

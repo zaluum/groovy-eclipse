@@ -19,6 +19,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
@@ -35,6 +36,8 @@ public class GroovyDSLCoreActivator extends AbstractUIPlugin {
     private DSLDResourceListener dsldListener;
     
     private AutoAddContainerSupport containerListener;
+
+    public final static String MARKER_ID = "org.codehaus.groovy.eclipse.dsl.inferencing_problem";
 
     public static IPath CLASSPATH_CONTAINER_ID = new Path("GROOVY_DSL_SUPPORT");
     
@@ -106,5 +109,8 @@ public class GroovyDSLCoreActivator extends AbstractUIPlugin {
         log(IStatus.WARNING, message, null);
     }
     
+    public static ImageDescriptor getImageDescriptor(String path) {
+        return imageDescriptorFromPlugin(PLUGIN_ID, path);
+    }
 
 }

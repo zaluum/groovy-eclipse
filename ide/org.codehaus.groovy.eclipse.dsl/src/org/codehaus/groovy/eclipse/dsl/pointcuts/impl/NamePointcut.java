@@ -10,10 +10,15 @@
  *******************************************************************************/
 package org.codehaus.groovy.eclipse.dsl.pointcuts.impl;
 
+import org.codehaus.groovy.ast.AnnotationNode;
 import org.codehaus.groovy.ast.ClassNode;
 import org.codehaus.groovy.ast.FieldNode;
 import org.codehaus.groovy.ast.MethodNode;
 import org.codehaus.groovy.ast.PropertyNode;
+import org.codehaus.groovy.ast.Variable;
+import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.MapEntryExpression;
+import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.eclipse.dsl.pointcuts.GroovyDSLDContext;
 import org.eclipse.core.resources.IStorage;
 
@@ -33,16 +38,27 @@ public class NamePointcut extends FilteringPointcut<Object> {
         String toCompare;
         if (result instanceof ClassNode) {
             toCompare = ((ClassNode) result).getName();
+        } else if (result instanceof AnnotationNode) {
+            toCompare = ((AnnotationNode) result).getClassNode().getName();
         } else if (result instanceof FieldNode) {
             toCompare = ((FieldNode) result).getName();
         } else if (result instanceof MethodNode) {
             toCompare = ((MethodNode) result).getName();
         } else if (result instanceof PropertyNode) {
             toCompare = ((PropertyNode) result).getName();
+        } else if (result instanceof MapEntryExpression) {
+            // argument to a method call
+            toCompare = ((MapEntryExpression) result).getKeyExpression().getText();
+        } else if (result instanceof MethodCallExpression) {
+            toCompare = ((MethodCallExpression) result).getMethodAsString();
+        } else if (result instanceof Variable) {
+            toCompare = ((Variable) result).getName();
+        } else if (result instanceof Expression) {
+            toCompare = ((Expression) result).getText();
         } else {
             toCompare = String.valueOf(result.toString());
         }
-        return toCompare.equals(firstArgAsString) ? result : null;
+        return toCompare.equals(firstArgAsString) ? toCompare : null;
     }
 
 }

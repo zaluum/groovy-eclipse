@@ -18,6 +18,8 @@ import java.util.Set;
 
 import org.codehaus.groovy.eclipse.GroovyLogManager;
 import org.codehaus.groovy.eclipse.TraceCategory;
+import org.codehaus.groovy.eclipse.dsl.inferencing.suggestions.SuggestionsLoader;
+import org.codehaus.groovy.eclipse.dsl.inferencing.suggestions.writer.SuggestionsFileProperties;
 import org.codehaus.groovy.eclipse.dsl.script.DSLDScriptExecutor;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -50,6 +52,8 @@ public class RefreshDSLDJob extends Job {
         private final IProject project;
         private final Set<IStorage> dsldFiles;
         private final Set<String> alreadyAdded; 
+        
+        
         public DSLDResourceVisitor(IProject project) {
             this.project = project;
             this.dsldFiles = new HashSet<IStorage>();
@@ -63,9 +67,10 @@ public class RefreshDSLDJob extends Job {
             }
             if (resource.getType() == IResource.FILE) {
                 IFile file = (IFile) resource;
-                if (!alreadyAdded.contains(file) && isDSLD(file)) {
+                if (!alreadyAdded.contains(file) && (isDSLD(file) || isSuggestionFile(file))) {
                     alreadyAdded.add(file.getName());
                     dsldFiles.add(file);
+                    
                 } else {
                     if (alreadyAdded.contains(file.getName())) {
                         GroovyDSLCoreActivator.logWarning("DSLD File " + file.getFullPath() + " already added, so skipping.");
@@ -159,18 +164,7 @@ public class RefreshDSLDJob extends Job {
                     }
                 }
             }
-        }
-
-        protected boolean isDSLD(IStorage file) {
-            if (file instanceof IFile) {
-                IFile iFile = (IFile) file;
-                return !iFile.isDerived() && "dsld".equals(iFile.getFileExtension());
-            } else {
-                String name = file.getName();
-                return name != null && name.endsWith(".dsld");
-            }
-        }
-    
+        }  
     }
 
     private final List<IProject> projects;
@@ -182,6 +176,24 @@ public class RefreshDSLDJob extends Job {
         super("Refresh DSLD scripts");
         this.projects = projects;
     }
+    
+    protected boolean isDSLD(IStorage file) {
+        return isFile(file, "dsld");
+    }
+    
+    protected boolean isSuggestionFile(IStorage file) {
+        return isFile(file, SuggestionsFileProperties.FILE_TYPE);
+    }
+    
+    protected boolean isFile(IStorage file, String extension) {
+        if (file instanceof IFile) {
+            IFile iFile = (IFile) file;
+            return !iFile.isDerived() && extension.equals(iFile.getFileExtension());
+        } else {
+            String name = file.getName();
+            return name != null && name.endsWith(extension);
+        }
+    }
 
     @Override
     public IStatus run(IProgressMonitor monitor) {
@@ -192,26 +204,18 @@ public class RefreshDSLDJob extends Job {
             }
             return Status.OK_STATUS;
         }
-        
-        // cancel all existing jobs
-        Job[] jobs = getJobManager().find(RefreshDSLDJob.class);
-        if (jobs != null) {
-            for (Job job : jobs) {
-                if (job != this) {
-                    job.cancel();
-                }
-            }
-//            FIXADE DANGER! DANGER! I think uncommenting this is causing the job to never end, but why???  Commenting out for now to see if this lets the tests pass and doesn't leave jobs running after shutting down.
-//            // now wait for them to be finished
+
+        // actually, don't cancel since refresh jobs for other
+        // projects may be running
+//        // cancel all existing jobs
+//        Job[] jobs = getJobManager().find(RefreshDSLDJob.class);
+//        if (jobs != null) {
 //            for (Job job : jobs) {
 //                if (job != this) {
-//                    try {
-//                        job.join();
-//                    } catch (InterruptedException e) {
-//                    }
+//                    job.cancel();
 //                }
 //            }
-        }
+//        }
 
 
         List<IStatus> errorStatuses = new ArrayList<IStatus>();
@@ -280,13 +284,19 @@ public class RefreshDSLDJob extends Job {
         monitor.worked(1);
         
         // now add the rest
-        DSLDScriptExecutor executor = new DSLDScriptExecutor(JavaCore.create(project));
         for (IStorage file : findDSLDFiles) {
             if (GroovyLogManager.manager.hasLoggers()) {
                 GroovyLogManager.manager.log(TraceCategory.DSL, "Processing " + file.getName() + " in project " + project.getName());
             }
             monitor.subTask("Processing " + file.getName() + " in project " + project.getName());
-            executor.executeScript(file);
+            
+            if (isDSLD(file)) {
+                DSLDScriptExecutor executor = new DSLDScriptExecutor(JavaCore.create(project));
+                executor.executeScript(file);
+            } else if (isSuggestionFile(file)) {
+                new SuggestionsLoader((IFile)file).loadExistingSuggestions();
+            }
+             
             if (monitor.isCanceled()) {
                 return Status.CANCEL_STATUS;
             }

@@ -63,6 +63,13 @@ public class InferencingTests extends AbstractInferencingTest {
         assertType("++10", "java.lang.Integer");
     }
     
+    public void testInferNumber6() throws Exception {
+        String contents = "(x <=> y).intValue()";
+        int start = contents.indexOf("intValue");
+        int end = start + "intValue".length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
     public void testInferString1() throws Exception {
         assertType("\"10\"", "java.lang.String");
     }
@@ -81,20 +88,149 @@ public class InferencingTests extends AbstractInferencingTest {
         assertType(contents, "java.lang.String");
     }
     
-    public void testInferList1() throws Exception {
-        assertType("[]", "java.util.List<java.lang.Object<E>>");
+    public void testMatcher1() throws Exception {
+        assertType("\"\" =~ /pattern/", "java.util.regex.Matcher");
     }
     
+    public void testMatcher2() throws Exception {
+        String contents = "(\"\" =~ /pattern/).hasGroup()";
+        int start = contents.indexOf("hasGroup");
+        int end = start + "hasGroup".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testPattern() throws Exception {
+        assertType("\"\" ==~ /pattern/", "java.lang.Boolean");
+    }
+    
+    public void testInferList1() throws Exception {
+        assertType("[]", "java.util.List<java.lang.Object>");
+    }
+    
+    // Should be java.util.List<java.lang.String>
     public void testInferList2() throws Exception {
-        assertType("[] << \"\"", "java.util.List<java.lang.Object<E>>");
+        assertType("[] << \"\"", "java.util.List<java.lang.Object>");
+    }
+    
+    
+    public void testInferClosure1() throws Exception {
+        if (GroovyUtils.GROOVY_LEVEL >= 18) {
+            assertType("x.&y", "groovy.lang.Closure<java.lang.Object<V>>");
+        } else {
+            // closure is not parameterized in groovy 1.7 and earlier
+            assertType("x.&y", "groovy.lang.Closure");
+        }
+    }
+    
+    public void testSpread1() throws Exception {
+        String contents = "def z = [1,2]*.value\nz";
+        int start = contents.lastIndexOf("value");
+        assertType(contents, start, start + "value".length(), "java.lang.Integer");
+    }
+    
+    
+    public void testSpread2() throws Exception {
+        String contents = "[1,2,3]*.intValue()";
+        int start = contents.lastIndexOf("intValue");
+        assertType(contents, start, start + "intValue".length(), "java.lang.Integer");
+    }
+
+    public void testSpread3() throws Exception {
+        String contents = "[1,2,3]*.intValue()[0].value";
+        int start = contents.lastIndexOf("value");
+        assertType(contents, start, start + "value".length(), "java.lang.Integer");
+    }
+    
+    public void testSpread4() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.getKey()";
+        int start = contents.lastIndexOf("getKey");
+        assertType(contents, start, start + "getKey".length(), "java.lang.String");
+    }
+    
+    public void testSpread5() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.getValue()";
+        int start = contents.lastIndexOf("getValue");
+        assertType(contents, start, start + "getValue".length(), "java.lang.Integer");
+    }
+    
+    public void testSpread6() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.key()";
+        int start = contents.lastIndexOf("key");
+        assertType(contents, start, start + "key".length(), "java.lang.String");
+    }
+    
+    public void testSpread7() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.value";
+        int start = contents.lastIndexOf("value");
+        assertType(contents, start, start + "value".length(), "java.lang.Integer");
+    }
+    
+    public void testSpread8() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.key[0].toLowerCase()";
+        int start = contents.lastIndexOf("toLowerCase");
+        assertType(contents, start, start + "toLowerCase".length(), "java.lang.String");
+    }
+    
+    public void testSpread9() throws Exception {
+        String contents = "[x:1,y:2,z:3]*.value[0].intValue()";
+        int start = contents.lastIndexOf("intValue");
+        assertType(contents, start, start + "intValue".length(), "java.lang.Integer");
+    }
+    
+    public void testSpread10() throws Exception {
+        String contents = "[1,2,3]*.value[0].value";
+        int start = contents.lastIndexOf("value");
+        assertType(contents, start, start + "value".length(), "java.lang.Integer");
     }
     
     public void testInferMap1() throws Exception {
-        assertType("[:]", "java.util.Map<java.lang.Object<K>,java.lang.Object<V>>");
+        assertType("[:]", "java.util.Map<java.lang.Object,java.lang.Object>");
     }
     
     public void testInferBoolean1() throws Exception {
         assertType("!x", "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean2() throws Exception {
+        String contents = "(x < y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean3() throws Exception {
+        String contents = "(x <= y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean4() throws Exception {
+        String contents = "(x >= y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean5() throws Exception {
+        String contents = "(x != y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean6() throws Exception {
+        String contents = "(x == y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
+    }
+    
+    public void testInferBoolean7() throws Exception {
+        String contents = "(x in y).booleanValue()";
+        int start = contents.indexOf("booleanValue");
+        int end = start + "booleanValue".length();
+        assertType(contents, start, end, "java.lang.Boolean");
     }
     
     public void testStaticMethodCall() throws Exception {
@@ -123,6 +259,21 @@ public class InferencingTests extends AbstractInferencingTest {
         assertType(contents, contents.indexOf(expr), contents.indexOf(expr)+expr.length(), "java.lang.String");
     }
     
+    public void testInferFieldWithInitializer1() throws Exception {
+        String contents = "class A {\ndef x = 9\n}\n new A().x";
+        int start = contents.lastIndexOf('x');
+        int end = start + "x".length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
+    public void testInferFieldWithInitializer2() throws Exception {
+        createUnit("A", "class A {\ndef x = 9\n} ");
+        String contents = "new A().x";
+        int start = contents.lastIndexOf('x');
+        int end = start + "x".length();
+        assertType(contents, start, end, "java.lang.Integer");
+    }
+    
     public void testTernaryExpression() throws Exception {
         String contents = "true ? '' : ''";
         assertType(contents, "java.lang.String");
@@ -135,23 +286,41 @@ public class InferencingTests extends AbstractInferencingTest {
     
     public void testRangeExpression1() throws Exception {
         String contents = "0 .. 5";
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, "java.util.List<java.lang.Integer>");
-        } else {
-            assertType(contents, "java.util.List<int>");
-        }
+        assertType(contents, "groovy.lang.Range<java.lang.Integer>");
     }
     
     public void testRangeExpression2() throws Exception {
         String contents = "0 ..< 5";
-        if (GroovyUtils.GROOVY_LEVEL < 18) {
-            assertType(contents, "java.util.List<java.lang.Integer>");
-        } else {
-            assertType(contents, "java.util.List<int>");
-        }
+        assertType(contents, "groovy.lang.Range<java.lang.Integer>");
     }
     
-
+    public void testRangeExpression3() throws Exception {
+        String contents = "(1..10).getFrom()";
+        int start = contents.lastIndexOf("getFrom");
+        int end = start + "getFrom".length();
+        assertType(contents, start, end, "java.lang.Comparable<java.lang.Integer>");
+    }
+    
+    public void testRangeExpression4() throws Exception {
+        String contents = "(1..10).getTo()";
+        int start = contents.lastIndexOf("getTo");
+        int end = start + "getTo".length();
+        assertType(contents, start, end, "java.lang.Comparable<java.lang.Integer>");
+    }
+    
+    public void testRangeExpression5() throws Exception {
+        String contents = "(1..10).step(0)";
+        int start = contents.lastIndexOf("step");
+        int end = start + "step".length();
+        assertType(contents, start, end, "java.util.List<java.lang.Integer>");
+    }
+    
+    public void testRangeExpression6() throws Exception {
+        String contents = "(1..10).step(0, { })";
+        int start = contents.lastIndexOf("step");
+        int end = start + "step".length();
+        assertType(contents, start, end, "java.lang.Void");
+    }
     
     public void testInnerClass1() throws Exception {
         String contents = "class Outer { class Inner { } \nInner x }\nnew Outer().x ";
@@ -530,4 +699,136 @@ public class InferencingTests extends AbstractInferencingTest {
         assertDeclaringType(contents, textStart, textEnd, "org.codehaus.groovy.runtime.DefaultGroovyMethods");
     }
     
+    public void testClassReference1() throws Exception {
+        String contents = "String";
+        assertDeclaringType(contents, 0, contents.length(), "java.lang.String");
+    }
+    
+    public void testClassReference2() throws Exception {
+        String contents = "String.substring";
+        int textStart = contents.indexOf("substring");
+        int textEnd = textStart + "substring".length();
+        assertDeclaringType(contents, textStart, textEnd, "java.lang.String", false, true);
+    }
+    
+    public void testClassReference3() throws Exception {
+        String contents = "String.getPackage()";
+        int textStart = contents.indexOf("getPackage");
+        int textEnd = textStart + "getPackage".length();
+        assertType(contents, textStart, textEnd, "java.lang.Package");
+    }
+    
+    public void testClassReference4() throws Exception {
+        String contents = "String.class.getPackage()";
+        int textStart = contents.indexOf("getPackage");
+        int textEnd = textStart + "getPackage".length();
+        assertType(contents, textStart, textEnd, "java.lang.Package");
+    }
+    
+    public void testClassReference5() throws Exception {
+        String contents = "String.class.package";
+        int textStart = contents.indexOf("package");
+        int textEnd = textStart + "package".length();
+        assertType(contents, textStart, textEnd, "java.lang.Package");
+    }
+    
+    public void testClassReference6() throws Exception {
+        String contents = "String.class";
+        // in the groovy AST, this is all one ast expression node (a class expression)
+        int textStart = contents.indexOf("String.class");
+        int textEnd = textStart + "String.class".length();
+        assertDeclaringType(contents, textStart, textEnd, "java.lang.Class<java.lang.Object<T>>", false, false);
+    }
+ 
+    public void testMultiDecl1() throws Exception {
+        String contents = "def (x, y) = []\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Object");
+        assertType(contents, yStart, yStart+1, "java.lang.Object");
+    }
+    public void testMultiDecl2() throws Exception {
+        String contents = "def (x, y) = [1]\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Integer");
+        assertType(contents, yStart, yStart+1, "java.lang.Integer");
+    }
+    public void testMultiDecl3() throws Exception {
+        String contents = "def (x, y) = [1,1]\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Integer");
+        assertType(contents, yStart, yStart+1, "java.lang.Integer");
+    }
+    public void testMultiDecl4() throws Exception {
+        String contents = "def (x, y) = [1,'']\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Integer");
+        assertType(contents, yStart, yStart+1, "java.lang.String");
+    }
+    public void testMultiDecl6() throws Exception {
+        String contents = "def (x, y) = new ArrayList()\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Object<E>");
+        assertType(contents, yStart, yStart+1, "java.lang.Object<E>");
+    }
+    public void testMultiDecl7() throws Exception {
+        String contents = "def (x, y) = new ArrayList<Double>()\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    public void testMultiDecl8() throws Exception {
+        String contents = "Double[] meth() { }\ndef (x, y) = meth()\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    public void testMultiDecl9() throws Exception {
+        String contents = "List<Double> meth() { }\ndef (x, y) = meth()\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    public void testMultiDecl10() throws Exception {
+        String contents = "List<Double> field\ndef (x, y) = field\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    public void testMultiDecl11() throws Exception {
+        String contents = "List<Double> field\ndef x\ndef y\n (x, y)= field\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    public void testMultiDecl12() throws Exception {
+        String contents = "def (x, y) = 1d\nx\ny";
+        int xStart = contents.lastIndexOf("x");
+        int yStart = contents.lastIndexOf("y");
+        assertType(contents, xStart, xStart+1, "java.lang.Double");
+        assertType(contents, yStart, yStart+1, "java.lang.Double");
+    }
+    
+    
+    // GRECLIPSE-1174 groovy casting
+    public void testAsExpression1() throws Exception {
+        String contents = "(1 as int).intValue()";
+        int start = contents.lastIndexOf("intValue");
+        assertType(contents, start, start+"intValue".length(), "java.lang.Integer");
+    }
+    // GRECLIPSE-1174 groovy casting
+    public void testAsExpression2() throws Exception {
+        String contents = "class Flar { int x\n }\n(null as Flar).x";
+        int start = contents.lastIndexOf("x");
+        assertType(contents, start, start+"x".length(), "java.lang.Integer");
+    }
 }

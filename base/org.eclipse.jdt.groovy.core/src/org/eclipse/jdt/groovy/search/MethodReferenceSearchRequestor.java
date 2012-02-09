@@ -16,7 +16,10 @@
 
 package org.eclipse.jdt.groovy.search;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.codehaus.groovy.ast.ASTNode;
@@ -47,6 +50,10 @@ import org.eclipse.jface.text.Position;
  */
 @SuppressWarnings("nls")
 public class MethodReferenceSearchRequestor implements ITypeRequestor {
+	/**
+	 * 
+	 */
+	private static final int MAX_PARAMS = 10;
 	private final SearchRequestor requestor;
 	private final SearchParticipant participant;
 
@@ -54,8 +61,13 @@ public class MethodReferenceSearchRequestor implements ITypeRequestor {
 	private final String declaringQualifiedName;
 	private final boolean findDeclarations;
 	private final boolean findReferences;
+	// currently, not used, but maybe they should be
+	@SuppressWarnings("unused")
 	private char[][] parameterQualifications;
+	@SuppressWarnings("unused")
 	private char[][] parameterSimpleNames;
+
+	private final int declaredParameterCount;
 
 	private final Set<Position> acceptedPositions = new HashSet<Position>();
 
@@ -74,6 +86,7 @@ public class MethodReferenceSearchRequestor implements ITypeRequestor {
 
 		parameterQualifications = pattern.parameterQualifications;
 		parameterSimpleNames = pattern.parameterSimpleNames;
+		declaredParameterCount = pattern.parameterSimpleNames == null ? 0 : pattern.parameterSimpleNames.length;
 	}
 
 	public VisitStatus acceptASTNode(ASTNode node, TypeLookupResult result, IJavaElement enclosingElement) {
@@ -83,7 +96,11 @@ public class MethodReferenceSearchRequestor implements ITypeRequestor {
 		int start = 0;
 		int end = 0;
 
-		// include method calls here because of closures
+		if (result.declaringType == null) {
+			// GRECLIPSE-1180 probably a literal of some kind
+			return VisitStatus.CONTINUE;
+		}
+
 		if (node instanceof ConstantExpression) {
 			String cName = ((ConstantExpression) node).getText();
 			if (cName != null && CharOperation.equals(name, cName.toCharArray())) {
@@ -121,12 +138,14 @@ public class MethodReferenceSearchRequestor implements ITypeRequestor {
 			}
 		}
 
+		// at this point, if doCheck is true, then we know that the method name matches
 		if (doCheck) {
 			// don't want to double accept nodes. This could happen with field and object initializers can get pushed into multiple
 			// constructors
 			Position position = new Position(start, end - start);
 			if (!acceptedPositions.contains(position)) {
-				boolean isCompleteMatch = qualifiedNameMatches(removeArray(result.declaringType));
+				int numberOfParameters = findNumberOfParameters(node, result);
+				boolean isCompleteMatch = nameAndArgsMatch(removeArray(result.declaringType), numberOfParameters);
 				if (isCompleteMatch) {
 					SearchMatch match = null;
 					if (isDeclaration && findDeclarations) {
@@ -151,18 +170,120 @@ public class MethodReferenceSearchRequestor implements ITypeRequestor {
 		return VisitStatus.CONTINUE;
 	}
 
-	// recursively check the hierarchy
-	private boolean qualifiedNameMatches(ClassNode declaringType) {
+	/**
+	 * @param node
+	 * @param result
+	 * @return finds the number of parameters in the method reference/declaration currently being analyzed.
+	 */
+	private int findNumberOfParameters(ASTNode node, TypeLookupResult result) {
+		return node instanceof MethodNode && ((MethodNode) node).getParameters() != null ? ((MethodNode) node).getParameters().length
+				: Math.max(0, result.scope.methodCallNumberOfArguments);
+	}
+
+	private Map<ClassNode, Boolean> cachedDeclaringNameMatches = new HashMap<ClassNode, Boolean>();
+	private Map<ClassNode, boolean[]> cachedParameterCounts = new HashMap<ClassNode, boolean[]>();
+
+	/**
+	 * Recursively checks the hierarchy for matching names
+	 * 
+	 * @param declaringType
+	 * @return
+	 */
+	private boolean nameAndArgsMatch(ClassNode declaringType, int currentCallCount) {
+		return matchOnName(declaringType) && matchOnNumberOfParameters(declaringType, currentCallCount);
+	}
+
+	private boolean matchOnName(ClassNode declaringType) {
+		if (declaringType == null ||
+		// since local variables have a declaring type of object, we don't accidentally want to return them as a match
+				(declaringType.getName().equals("java.lang.Object") && declaringType.getDeclaredMethods(String.valueOf(name))
+						.size() == 0)) {
+			return false;
+		}
 		if (declaringQualifiedName == null || declaringQualifiedName.equals("")) {
 			// no type specified, accept all
 			return true;
 		}
-		if (declaringType == null) {
-			return false;
-		} else if (declaringType.getName().equals(declaringQualifiedName)) {
+
+		Boolean maybeMatch = cachedDeclaringNameMatches.get(declaringType);
+		if (maybeMatch != null) {
+			return maybeMatch;
+		}
+
+		if (declaringType.getName().equals(declaringQualifiedName)) {
+			cachedDeclaringNameMatches.put(declaringType, true);
+
+			// the name matches, now what about number of arguments?
 			return true;
 		} else {
-			return qualifiedNameMatches(declaringType.getSuperClass());
+
+			// check the supers
+			maybeMatch = matchOnName(declaringType.getSuperClass());
+			if (!maybeMatch) {
+				for (ClassNode iface : declaringType.getInterfaces()) {
+					maybeMatch = matchOnName(iface);
+					if (maybeMatch) {
+						break;
+					}
+				}
+			}
+			cachedDeclaringNameMatches.put(declaringType, maybeMatch);
+			return maybeMatch;
+		}
+	}
+
+	/**
+	 * When matching method references and declarations, we can't actually match on parameter types. Instead, we match on the number
+	 * of parameterrs and assume that it is slightly more preceise than just matching on name.
+	 * 
+	 * The heuristic that is used in this method is this: 1. The search pattern expects 'n' parameters 2. the current node has 'm'
+	 * arguments. 3. if the m == n, then there is a precise match. 4. if not, look at all methods in current type with same name. 5.
+	 * if there is a method in the current type with the same number of arguments, then assume the current node matches that other
+	 * method, and there is no match. 6. If there are no existing methods with same number of parameters, then assume that current
+	 * method call is an alternative way of calling the method and return a match
+	 * 
+	 * @param declaringType
+	 * @param currentCallCount
+	 * @return true if there is a precise match between number of arguments and numner of parameters. false if there exists a
+	 *         different method with same number of arguments in current type, or true otherwise
+	 * 
+	 */
+	private boolean matchOnNumberOfParameters(ClassNode declaringType, int currentCallCount) {
+		boolean methodParamNumberMatch;
+		if (currentCallCount == declaredParameterCount) {
+			// precise match
+			methodParamNumberMatch = true;
+		} else {
+
+			boolean[] foundParameterNumbers = cachedParameterCounts.get(declaringType);
+			if (foundParameterNumbers == null) {
+				foundParameterNumbers = new boolean[MAX_PARAMS + 1];
+				gatherParameters(declaringType, foundParameterNumbers);
+				cachedParameterCounts.put(declaringType, foundParameterNumbers);
+			}
+			// now, if we find a method that has the same number of parameters in the call,
+			// then assume the call is for this target method (and therefore there is no match)
+			methodParamNumberMatch = !foundParameterNumbers[Math.min(MAX_PARAMS, currentCallCount)];
+		}
+		return methodParamNumberMatch;
+	}
+
+	/**
+	 * @param declaringType
+	 * @param foundParameterNumbers
+	 */
+	private void gatherParameters(ClassNode declaringType, boolean[] foundParameterNumbers) {
+		if (declaringType == null) {
+			return;
+		}
+		List<MethodNode> methods = declaringType.getMethods(String.valueOf(name));
+		for (MethodNode method : methods) {
+			foundParameterNumbers[Math.min(method.getParameters().length, MAX_PARAMS)] = true;
+		}
+
+		gatherParameters(declaringType.getSuperClass(), foundParameterNumbers);
+		for (ClassNode iface : declaringType.getInterfaces()) {
+			gatherParameters(iface, foundParameterNumbers);
 		}
 	}
 
